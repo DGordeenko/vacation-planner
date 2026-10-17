@@ -26,6 +26,12 @@ COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app
 COPY --chown=app:app . .
 
+# Проверка проекта при сборке: несовместимые версии зависимостей или ошибка
+# импорта должны валить сборку образа, а не запуск на сервере.
+# collectstatic ниже этого не ловит — он не загружает URLconf, а значит
+# не импортирует представления, где такие ошибки обычно и проявляются.
+RUN SECRET_KEY=build-only python manage.py check
+
 # Статика собирается на этапе сборки: в рантайме том может быть только для чтения.
 RUN SECRET_KEY=build-only python manage.py collectstatic --noinput
 
