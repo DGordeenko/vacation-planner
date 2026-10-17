@@ -112,6 +112,7 @@ CORS_ALLOWED_ORIGINS = _env_list(
 
 MIDDLEWARE = [
     'config.middleware.CorsMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -145,10 +146,42 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
+def _database_from_url(url):
+    """Разбор DATABASE_URL без внешней зависимости.
+
+    Поддерживает postgres:// и sqlite://. Отдельная библиотека ради одной
+    функции не оправдана: ADR-002 требует обосновывать каждую зависимость.
+    """
+    from urllib.parse import unquote, urlparse
+
+    parsed = urlparse(url)
+    scheme = parsed.scheme.split("+")[0]
+
+    if scheme == "sqlite":
+        path = parsed.path or "/db.sqlite3"
+        return {"ENGINE": "django.db.backends.sqlite3", "NAME": path.lstrip("/")}
+
+    if scheme not in ("postgres", "postgresql"):
+        raise ValueError(f"Неподдерживаемая схема в DATABASE_URL: {parsed.scheme}")
+
+    return {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": unquote(parsed.path.lstrip("/")),
+        "USER": unquote(parsed.username or ""),
+        "PASSWORD": unquote(parsed.password or ""),
+        "HOST": parsed.hostname or "",
+        "PORT": str(parsed.port or ""),
+        "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "60")),
+    }
+
+
+# Без DATABASE_URL работает локально на SQLite: так прогоняются тесты
+# и запускается проект без поднятой базы.
+_database_url = os.environ.get("DATABASE_URL", "")
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": _database_from_url(_database_url) if _database_url else {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
     }
 }
 
@@ -188,6 +221,16 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# WhiteNoise отдаёт статику самим приложением: отдельный веб-сервер
+# для админки Django разворачивать незачем.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 
 # Email

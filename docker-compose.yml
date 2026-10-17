@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vacation}
+      POSTGRES_USER: ${POSTGRES_USER:-vacation}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vacation}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Бэкенд стартует только после готовности базы, иначе первая же
+      # миграция упадёт на ещё не поднятом сервере.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vacation}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-dev-only-insecure-key-replace-in-production}
+      DEBUG: ${DEBUG:-False}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      DATABASE_URL: postgres://${POSTGRES_USER:-vacation}:${POSTGRES_PASSWORD:-vacation}@postgres:5432/${POSTGRES_DB:-vacation}
+      PORT: 8000
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8080}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:8080}
+      MAIL_NOTIFICATIONS_ENABLED: ${MAIL_NOTIFICATIONS_ENABLED:-False}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health/').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Пусто: обращение к API идёт относительным путём, nginx проксирует.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    environment:
+      PORT: 8080
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "${FRONTEND_PORT:-8080}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

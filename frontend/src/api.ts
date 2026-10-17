@@ -11,7 +11,11 @@ import type {
   ValidationResult, YearSummary,
 } from "./types";
 
-const BASE = "/api/v1";
+/* Пустой VITE_API_BASE_URL — относительный путь: nginx проксирует /api
+   на бэкенд (Docker, Kubernetes). Заданный — абсолютный адрес бэкенда
+   для площадок, где сервисы живут на разных доменах (Railway). */
+const API_ROOT = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+const BASE = `${API_ROOT}/api/v1`;
 const TOKEN_KEY = "vs_token";
 
 let token: string | null = null;
