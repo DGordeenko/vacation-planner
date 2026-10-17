@@ -3,6 +3,10 @@ djangorestframework==3.16.1
 psycopg[binary]==3.2.3
 python-dotenv==1.0.1
 
+# Запуск в контейнере (этап 0, см. docs/tasks/00-skeleton.md)
+gunicorn==23.0.0        # сервер приложений
+whitenoise==6.8.2       # отдача статики самим приложением
+
 # Доменная аутентификация
 pyjwt[crypto]==2.10.1   # проверка подписи id_token (Keycloak)
 requests==2.32.3

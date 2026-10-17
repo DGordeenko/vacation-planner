@@ -2,6 +2,8 @@ from django.contrib import admin
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from config.health import HealthView
+
 from audit.views import AuditLogViewSet
 from company.views import HolidayAdminViewSet
 
@@ -47,6 +49,7 @@ router.register("schedule-approvals", ScheduleApprovalViewSet, basename="schedul
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/health/", HealthView.as_view()),
     path("api/v1/auth/methods/", AuthMethodsView.as_view()),
     path("api/v1/auth/negotiate/", NegotiateView.as_view()),
     path("api/v1/auth/oidc/start/", OidcStartView.as_view()),
