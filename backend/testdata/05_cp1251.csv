@@ -1,0 +1,2 @@
+employee_number;full_name;email;hire_date;department
+5001;Кириллица Тест;cp1251@corp.ru;2020-01-01;Отдел кодировок

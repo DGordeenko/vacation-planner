@@ -1,0 +1,8 @@
+employee_number;full_name;email;hire_date;department;manager_employee_number;initial_balance_days
+3001;Осипов Алексей;osipov@corp.ru;2018-05-05;Отдел поддержки;;10
+3002;;majorova@corp.ru;2019-07-01;Отдел поддержки;3001;5
+3003;Чепенко Виктор;chepenko-corp.ru;2020-03-11;Отдел поддержки;3001;5
+3004;Беляков Артём;belyakov@corp.ru;не указана;Отдел поддержки;3001;5
+3001;Осипов Алексей (дубль);osipov2@corp.ru;2018-05-05;Отдел поддержки;;10
+3005;Шкуратов Дмитрий;shkuratov@corp.ru;2017-02-14;Отдел поддержки;9999;-3
+3006;Гордеенко Дмитрий;gordeenko@corp.ru;2016-01-10;Отдел поддержки;3006;8

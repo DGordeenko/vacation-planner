@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Django
+db.sqlite3
+media/
+staticfiles/
+
+# Секреты и локальные настройки
+.env
+.env.local
+*.keytab
+
+# Frontend
+node_modules/
+dist/
+.vite/
+
+# Редакторы и ОС
+.vscode/
+.idea/
+.DS_Store

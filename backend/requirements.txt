@@ -1,0 +1,10 @@
+Django==6.1.1
+djangorestframework==3.16.1
+psycopg[binary]==3.2.3
+python-dotenv==1.0.1
+
+# Доменная аутентификация
+pyjwt[crypto]==2.10.1   # проверка подписи id_token (Keycloak)
+requests==2.32.3
+# gssapi==1.9.0         # Kerberos: требует системных libkrb5-dev и krb5-user,
+                        # включать только на сервере с настроенным keytab

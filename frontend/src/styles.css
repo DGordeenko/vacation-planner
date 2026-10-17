@@ -1,0 +1,353 @@
+/* Все цвета — через переменные: только так работают брендирование
+   и тёмная тема без переписывания компонентов. */
+
+:root {
+  --brand: #2f6feb;
+  --brand-contrast: #ffffff;
+  --brand-radius: 8px;
+  --ink: #16202b;
+  --muted: #5c6b7a;
+  --line: #dce2ea;
+  --surface: #f3f5f8;
+  --paper: #ffffff;
+  --warn: #b4531a;
+  --alert: #a32d2d;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+*:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+.vs-root { min-height: 100vh; }
+.vs-loading { display: grid; place-items: center; min-height: 100vh; color: var(--muted); }
+.vs-muted { color: var(--muted); }
+.vs-small { font-size: 12px; }
+
+/* Шапка */
+.vs-bar {
+  display: flex; align-items: center; gap: 16px; padding: 14px 24px;
+  background: var(--paper); border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 20; flex-wrap: wrap;
+}
+.vs-mark {
+  width: 30px; height: 30px; border-radius: 7px;
+  background: var(--brand); color: var(--brand-contrast);
+  display: grid; place-items: center; font-weight: 600; font-size: 13px;
+}
+.vs-org { font-weight: 600; letter-spacing: -0.01em; }
+.vs-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.vs-badge {
+  background: var(--alert); color: #fff; border-radius: 999px;
+  padding: 1px 8px; font-size: 12px; font-weight: 600;
+}
+
+.vs-error {
+  background: #fdf3f3; border-bottom: 1px solid #e9cccc; color: var(--alert);
+  padding: 10px 24px; font-size: 13px; display: flex; gap: 12px; align-items: center;
+}
+
+/* Раскладка */
+.vs-shell {
+  display: grid; grid-template-columns: 276px 1fr; gap: 24px;
+  padding: 24px; align-items: start;
+}
+.vs-rail { position: sticky; top: 84px; display: grid; gap: 14px; }
+@media (max-width: 940px) {
+  .vs-shell { grid-template-columns: 1fr; }
+  .vs-rail { position: static; }
+}
+
+.vs-card {
+  background: var(--paper); border: 1px solid var(--line);
+  border-radius: 10px; padding: 16px;
+}
+.vs-card h2 { font-size: 13px; font-weight: 600; margin: 0 0 12px; color: var(--muted); }
+
+.vs-figure { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+.vs-unit { font-size: 13px; color: var(--muted); }
+
+/* Показатели готовности */
+.vs-metric { display: grid; gap: 6px; margin-bottom: 15px; }
+.vs-metric:last-child { margin-bottom: 0; }
+.vs-metric-top {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 13px; gap: 8px;
+}
+.vs-track { height: 5px; background: var(--surface); border-radius: 3px; overflow: hidden; }
+.vs-fill { height: 100%; }
+.vs-fill.brand { background: var(--brand); }
+.vs-fill.brand.short { background: var(--warn); }
+.vs-fill.ink { background: var(--ink); }
+.vs-need { font-size: 12px; color: var(--warn); }
+.vs-ok { font-size: 12px; color: var(--muted); }
+
+/* Теги */
+.vs-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.vs-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); background: var(--paper);
+  border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 12px;
+  cursor: pointer; color: var(--ink);
+}
+.vs-tag[aria-pressed="true"] {
+  background: var(--brand); color: var(--brand-contrast); border-color: var(--brand);
+}
+.vs-tag-limit { opacity: 0.7; }
+
+/* Списки */
+.vs-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.vs-item {
+  display: flex; align-items: center; gap: 8px; font-size: 13px;
+  padding: 7px 9px; background: var(--surface); border-radius: 7px;
+}
+.vs-note-item { display: block; }
+.vs-item-days { color: var(--muted); font-size: 12px; margin-left: auto; }
+.vs-x {
+  border: 0; background: none; color: var(--muted); cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 2px 4px; border-radius: 4px;
+}
+.vs-x:hover { color: var(--alert); background: var(--paper); }
+
+/* Календарь */
+.vs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 1180px) { .vs-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 940px) { .vs-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .vs-grid { grid-template-columns: 1fr; } }
+
+.vs-month {
+  background: var(--paper); border: 1px solid var(--line);
+  border-radius: 10px; padding: 12px;
+}
+.vs-month h3 { font-size: 13px; font-weight: 600; margin: 0 0 9px; }
+.vs-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.vs-wd { font-size: 10px; color: var(--muted); text-align: center; padding-bottom: 3px; }
+
+.vs-day {
+  aspect-ratio: 1; border: 0; background: transparent; padding: 0;
+  border-radius: 5px; font: inherit; font-size: 11px; color: var(--ink);
+  cursor: pointer; position: relative; display: grid; place-items: center;
+}
+.vs-day:hover:not(:disabled) { background: var(--surface); }
+.vs-day:disabled { cursor: default; }
+.vs-day.void { visibility: hidden; }
+.vs-day.weekend { color: var(--muted); }
+/* Праздник помечается точкой, а не только цветом — иначе на чужом
+   фирменном цвете различение пропадает. */
+.vs-day.holiday::after {
+  content: ""; position: absolute; bottom: 2px; left: 50%;
+  transform: translateX(-50%); width: 3px; height: 3px;
+  border-radius: 50%; background: var(--warn);
+}
+.vs-day.draft {
+  background: var(--paper); color: var(--brand);
+  font-weight: 500; box-shadow: inset 0 0 0 1.5px var(--brand);
+}
+.vs-day.booked { background: var(--brand); color: var(--brand-contrast); font-weight: 500; }
+.vs-day.marking { background: var(--ink); color: var(--paper); }
+.vs-day.conflict {
+  background: repeating-linear-gradient(45deg, #f7dcdc, #f7dcdc 3px, #fff 3px, #fff 6px);
+  color: var(--alert); font-weight: 600;
+}
+
+.vs-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.vs-top .vs-btn { margin-left: auto; }
+.vs-banner {
+  display: flex; align-items: center; gap: 12px; padding: 11px 14px;
+  background: var(--paper); border: 1px solid var(--line);
+  border-left: 3px solid var(--brand); border-radius: 0 8px 8px 0;
+  font-size: 13px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.vs-banner .vs-btn { margin-left: auto; }
+
+/* Карточка проверки */
+.vs-panel {
+  position: fixed; right: 24px; bottom: 24px; width: 390px;
+  max-width: calc(100vw - 32px); background: var(--paper);
+  border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(22, 32, 43, 0.16); z-index: 40; overflow: hidden;
+}
+.vs-panel-head {
+  padding: 14px 16px; border-bottom: 1px solid var(--line);
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+.vs-panel-body { padding: 14px 16px; display: grid; gap: 12px; max-height: 50vh; overflow: auto; }
+.vs-panel-foot {
+  padding: 12px 16px; border-top: 1px solid var(--line);
+  display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;
+}
+
+.vs-rows { margin: 0; display: grid; gap: 5px; }
+.vs-row { display: flex; justify-content: space-between; font-size: 13px; gap: 12px; }
+.vs-row dt { color: var(--muted); }
+.vs-row dd { margin: 0; font-weight: 500; }
+
+.vs-issue {
+  border-left: 3px solid var(--alert); background: #fdf3f3;
+  padding: 9px 11px; border-radius: 0 6px 6px 0;
+}
+.vs-issue.hard { border-left-color: var(--ink); background: var(--surface); }
+.vs-issue-name { font-weight: 500; font-size: 13px; }
+.vs-issue-text { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.vs-note {
+  background: #fdf6ec; border-left: 3px solid var(--warn);
+  padding: 9px 11px; border-radius: 0 6px 6px 0; font-size: 12.5px;
+}
+
+/* Элементы управления */
+.vs-btn {
+  font: inherit; font-size: 13px; padding: 8px 14px;
+  border-radius: var(--brand-radius); border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink); cursor: pointer;
+}
+.vs-btn.primary { background: var(--brand); color: var(--brand-contrast); border-color: var(--brand); }
+.vs-btn.danger { color: var(--alert); border-color: #e9cccc; }
+.vs-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.vs-link {
+  background: none; border: 0; font: inherit; font-size: 13px;
+  color: var(--brand); cursor: pointer; padding: 0;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+
+.vs-field { display: grid; gap: 5px; font-size: 12px; color: var(--muted); }
+.vs-field input {
+  font: inherit; font-size: 13px; color: var(--ink); padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--paper);
+}
+
+/* Вход */
+.vs-login { display: grid; place-items: center; min-height: 100vh; padding: 24px; }
+.vs-login-card { width: 340px; max-width: 100%; display: grid; gap: 12px; }
+.vs-login-card h1 { font-size: 20px; margin: 0; letter-spacing: -0.02em; }
+.vs-login-card p { margin: 0; font-size: 13px; }
+
+/* --- Административный календарь --- */
+
+.vs-admin { padding: 24px; }
+.vs-admin-title { font-size: 18px; margin: 0; letter-spacing: -0.02em; }
+.vs-admin-shell {
+  display: grid; grid-template-columns: 276px 1fr; gap: 24px; align-items: start;
+}
+@media (max-width: 940px) { .vs-admin-shell { grid-template-columns: 1fr; } }
+
+.vs-error-inline { border: 1px solid #e9cccc; border-radius: 8px; margin-bottom: 14px; }
+.vs-hint { margin: 0 0 14px; }
+.vs-years { display: flex; gap: 6px; flex-wrap: wrap; }
+.vs-actions { display: grid; gap: 8px; }
+.vs-btn.block { width: 100%; }
+
+/* Типы дней различаются заливкой и рамкой, а не только цветом */
+.vs-day.mark-holiday { background: var(--brand); color: var(--brand-contrast); font-weight: 500; }
+.vs-day.mark-pre_holiday_short {
+  background: #fdf6ec; color: var(--warn); font-weight: 500;
+  box-shadow: inset 0 0 0 1.5px var(--warn);
+}
+.vs-day.mark-transferred_workday {
+  background: var(--surface); color: var(--ink); font-weight: 500;
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+}
+
+.vs-legend-card { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--muted); margin-top: 14px; }
+.vs-legend-card span { display: inline-flex; align-items: center; gap: 7px; }
+.vs-chip { width: 13px; height: 13px; border-radius: 4px; display: inline-block; }
+.vs-chip.mark-holiday { background: var(--brand); }
+.vs-chip.mark-pre_holiday_short { background: #fdf6ec; box-shadow: inset 0 0 0 1.5px var(--warn); }
+.vs-chip.mark-transferred_workday { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--muted); }
+
+.vs-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.vs-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.vs-table tr:last-child td { border-bottom: 0; }
+.vs-td-date { color: var(--muted); width: 64px; }
+.vs-td-action { width: 32px; text-align: right; }
+
+.vs-select {
+  font: inherit; font-size: 12px; padding: 4px 7px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+}
+
+/* Загрузка файла */
+.vs-modal {
+  position: fixed; inset: 0; background: rgba(22, 32, 43, 0.4);
+  display: grid; place-items: center; z-index: 60; padding: 24px;
+}
+.vs-modal-card {
+  background: var(--paper); border-radius: 12px; width: 560px;
+  max-width: 100%; max-height: 88vh; display: flex; flex-direction: column;
+  box-shadow: 0 16px 48px rgba(22, 32, 43, 0.24);
+}
+.vs-modal-card .vs-panel-body { max-height: none; }
+
+.vs-textarea {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+  padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--paper); color: var(--ink); resize: vertical;
+}
+.vs-details { font-size: 12px; color: var(--muted); }
+.vs-details summary { cursor: pointer; }
+.vs-pre {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px;
+  background: var(--surface); padding: 9px 11px; border-radius: 6px;
+  overflow-x: auto; margin: 8px 0;
+}
+.vs-check { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; }
+.vs-problems { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); }
+.vs-problems li { margin-bottom: 3px; }
+.vs-ok-box {
+  background: var(--surface); border-left: 3px solid var(--brand);
+  padding: 9px 11px; border-radius: 0 6px 6px 0; font-size: 12.5px;
+}
+.vs-preview { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 180px; overflow: auto; }
+.vs-preview li { display: flex; gap: 10px; font-size: 12.5px; padding: 4px 7px; background: var(--surface); border-radius: 5px; }
+.vs-preview-date { color: var(--muted); min-width: 44px; }
+
+/* Прогресс цепочки согласования */
+.vs-banner-column { display: block; }
+.vs-banner-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.vs-banner-row .vs-btn { margin-left: auto; }
+
+.vs-chain {
+  list-style: none; margin: 12px 0 0; padding: 0;
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.vs-chain-step {
+  display: flex; gap: 8px; align-items: flex-start; flex: 1 1 150px;
+  padding: 8px 10px; border-radius: 8px; background: var(--surface);
+}
+/* Состояние шага различается не только цветом, но и знаком */
+.vs-chain-mark {
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+  display: grid; place-items: center; font-size: 11px; font-weight: 600;
+  background: var(--paper); color: var(--muted);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+}
+.vs-chain-step.approved .vs-chain-mark {
+  background: var(--brand); color: var(--brand-contrast); box-shadow: none;
+}
+.vs-chain-step.rejected .vs-chain-mark {
+  background: var(--alert); color: #fff; box-shadow: none;
+}
+.vs-chain-body { display: grid; gap: 1px; min-width: 0; }
+.vs-chain-name { font-size: 12.5px; font-weight: 500; }
+.vs-chain-level { font-size: 11px; color: var(--muted); }
+.vs-chain-comment { font-size: 11px; color: var(--muted); font-style: italic; }
+
+.vs-banner-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+.vs-login-domain { display: grid; gap: 8px; }
+.vs-login-divider {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; color: var(--muted);
+}
+.vs-login-divider::before, .vs-login-divider::after {
+  content: ""; flex: 1; height: 1px; background: var(--line);
+}

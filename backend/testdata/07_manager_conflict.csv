@@ -1,0 +1,5 @@
+employee_number;full_name;email;hire_date;department;group;manager_employee_number
+7001;Начальник Отдела;chief@corp.ru;2015-01-01;Отдел Т;;
+7002;Тимлид Группы;lead@corp.ru;2016-01-01;Отдел Т;Группа Т;7001
+7003;Инженер Первый;eng1@corp.ru;2018-01-01;Отдел Т;Группа Т;7002
+7004;Инженер Второй;eng2@corp.ru;2019-01-01;Отдел Т;Группа Т;7002
