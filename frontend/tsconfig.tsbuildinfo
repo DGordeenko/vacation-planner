@@ -1,1 +1,0 @@
-{"root":["./src/App.tsx","./src/api.ts","./src/dates.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/components/EntryPanel.tsx","./src/components/HolidayAdmin.tsx","./src/components/HolidayImport.tsx","./src/components/Login.tsx","./src/components/SummaryPanel.tsx","./src/components/YearCalendar.tsx"],"version":"5.9.3"}

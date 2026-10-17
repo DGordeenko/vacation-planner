@@ -24,3 +24,6 @@ dist/
 .vscode/
 .idea/
 .DS_Store
+
+# Служебные файлы сборки TypeScript
+*.tsbuildinfo
