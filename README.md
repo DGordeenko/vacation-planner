@@ -70,6 +70,13 @@ curl http://localhost:8080/api/health/
 # {"status":"ok","database":"ok"}
 ```
 
+### Первый администратор
+
+Чтобы войти в чистую систему без демонстрационных данных, задайте в `.env`
+`ADMIN_EMAIL` и `ADMIN_PASSWORD` до первого запуска — администратор создастся
+при старте контейнера. Повторные запуски его не меняют. Подробно —
+[`docs/14-initial-admin.md`](docs/14-initial-admin.md).
+
 ### Демонстрационные данные
 
 ```bash
@@ -123,7 +130,7 @@ npm run dev                       # http://localhost:5173
 ### Тесты
 
 ```bash
-cd backend && python manage.py test        # 271 тест
+cd backend && python manage.py test        # 289 тестов
 cd frontend && npx tsc -b && npm run build
 ```
 
@@ -144,6 +151,8 @@ cd frontend && npx tsc -b && npm run build
 | `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS` | Нужны, только если фронтенд на другом домене |
 | `VITE_API_BASE_URL` | Адрес API. Пусто — относительный путь через прокси nginx |
 | `RUN_MIGRATIONS` | `0` отключает миграции при старте контейнера |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Первый администратор, создаётся при старте, если его ещё нет. Подробно — `docs/14-initial-admin.md` |
+| `ADMIN_FULL_NAME`, `ADMIN_EMPLOYEE_NUMBER`, `ADMIN_HIRE_DATE` | Необязательные поля администратора, есть значения по умолчанию |
 
 Доменная аутентификация — `docs/11-sso-setup.md`,
 почтовые уведомления — `docs/12-mail-setup.md`.
