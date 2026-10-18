@@ -10,6 +10,13 @@ if [ "${RUN_MIGRATIONS:-1}" = "1" ]; then
     python manage.py migrate --noinput
 fi
 
+# Первый администратор из ADMIN_EMAIL и ADMIN_PASSWORD. Команда идемпотентна:
+# если пользователь уже есть, ничего не меняет, поэтому безопасна при каждом
+# старте. Вызывается и при RUN_MIGRATIONS=0 — в Kubernetes миграции идут
+# отдельным Job до старта реплик. Без переменных команда просто пропускается.
+# Пароль не выводится: команда его не печатает, а set -x здесь не включён.
+python manage.py ensure_admin
+
 exec gunicorn config.wsgi:application \
     --bind "0.0.0.0:${PORT:-8000}" \
     --workers "${GUNICORN_WORKERS:-3}" \
