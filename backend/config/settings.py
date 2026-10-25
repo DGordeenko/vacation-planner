@@ -198,16 +198,33 @@ DATABASES = {
 # --- Демонстрационный режим (docs/15-demo-mode.md) ----------------------
 # Демо работает на том же экземпляре, но в отдельной базе: справочники,
 # праздники и настройки глобальные, и в общей базе демо их бы переписало.
-# По умолчанию — SQLite во временном каталоге: данные заново загружаются
-# при каждом старте, хранить их незачем. Для нескольких реплик нужна
-# общая база — DEMO_DATABASE_URL с адресом отдельной базы Postgres.
+# Выключено по умолчанию: включается только явно, DEMO_MODE_ENABLED=True.
 DEMO_MODE_ENABLED = os.environ.get("DEMO_MODE_ENABLED", "False").lower() in ("1", "true", "yes")
 
-_demo_database_url = os.environ.get("DEMO_DATABASE_URL", "")
-DATABASES["demo"] = _database_from_url(_demo_database_url) if _demo_database_url else {
-    "ENGINE": "django.db.backends.sqlite3",
-    "NAME": Path(tempfile.gettempdir()) / "vacation-planner-demo.sqlite3",
-}
+DEMO_SQLITE_PATH = Path(tempfile.gettempdir()) / "vacation-planner-demo.sqlite3"
+
+
+def _demo_database(enabled, url):
+    """Псевдоним demo нужен всегда: на него ссылается код и тесты.
+
+    Выключенное демо — SQLite в памяти, без файла. Django 6.1 при любой
+    проверке моделей (manage.py check, migrate) подключается ко всем базам;
+    с файловой базой проверка при сборке образа от root создавала пустой
+    файл, принадлежащий root, и на сервере пользователь app не мог в него
+    писать — контейнер падал на миграции демо-базы.
+
+    Включённое — DEMO_DATABASE_URL либо SQLite во временном каталоге:
+    данные заново загружаются при каждом старте, хранить их незачем.
+    Для нескольких реплик нужна общая база Postgres в DEMO_DATABASE_URL.
+    """
+    if not enabled:
+        return {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
+    if url:
+        return _database_from_url(url)
+    return {"ENGINE": "django.db.backends.sqlite3", "NAME": DEMO_SQLITE_PATH}
+
+
+DATABASES["demo"] = _demo_database(DEMO_MODE_ENABLED, os.environ.get("DEMO_DATABASE_URL", ""))
 
 
 # Password validation

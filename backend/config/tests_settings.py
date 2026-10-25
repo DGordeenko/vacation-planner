@@ -2,7 +2,7 @@
 
 from django.test import SimpleTestCase
 
-from config.settings import _database_from_url
+from config.settings import DEMO_SQLITE_PATH, _database_from_url, _demo_database
 
 
 class DatabaseUrlTests(SimpleTestCase):
@@ -25,3 +25,19 @@ class DatabaseUrlTests(SimpleTestCase):
     def test_unknown_scheme_rejected(self):
         with self.assertRaises(ValueError):
             _database_from_url("mysql://db/vacation")
+
+
+class DemoDatabaseTests(SimpleTestCase):
+    def test_disabled_demo_has_no_file(self):
+        """Выключенное демо не создаёт файлов: проверки Django открывают все базы."""
+        self.assertEqual(_demo_database(False, "")["NAME"], ":memory:")
+        self.assertEqual(_demo_database(False, "postgres://u:p@db/demo")["NAME"], ":memory:")
+
+    def test_enabled_demo_defaults_to_temp_directory(self):
+        import tempfile
+        config = _demo_database(True, "")
+        self.assertEqual(config["NAME"], DEMO_SQLITE_PATH)
+        self.assertEqual(str(DEMO_SQLITE_PATH.parent), tempfile.gettempdir())
+
+    def test_enabled_demo_uses_url(self):
+        self.assertEqual(_demo_database(True, "postgres://u:p@db/demo")["NAME"], "demo")

@@ -88,8 +88,10 @@ curl http://localhost:8080/api/health/
 в отдельной базе и рабочих не касаются, при каждом старте контейнера
 загружаются заново.
 
-Включается переменной `DEMO_MODE_ENABLED=True` (в `.env.example` уже
-включено). Подробно — [`docs/15-demo-mode.md`](docs/15-demo-mode.md).
+По умолчанию выключено, включается только явно: `DEMO_MODE_ENABLED=True`
+в `.env` или в переменных площадки. Сбой подготовки демо не мешает запуску
+рабочей системы — пропадает только кнопка. Подробно —
+[`docs/15-demo-mode.md`](docs/15-demo-mode.md).
 
 ### Тестовые учётные записи в рабочей базе
 
@@ -146,7 +148,7 @@ npm run dev                       # http://localhost:5173
 ### Тесты
 
 ```bash
-cd backend && python manage.py test        # 328 тестов
+cd backend && python manage.py test        # 336 тестов
 cd frontend && npx tsc -b && npm run build
 ```
 

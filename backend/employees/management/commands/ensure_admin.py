@@ -23,6 +23,7 @@ from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import IntegrityError, transaction
 
+from config.commands import WorkingDatabaseChecks
 from employees.models import Employee
 
 DEFAULT_FULL_NAME = "Администратор"
@@ -33,7 +34,7 @@ def _env(name: str) -> str:
     return (os.environ.get(name) or "").strip()
 
 
-class Command(BaseCommand):
+class Command(WorkingDatabaseChecks, BaseCommand):
     help = "Создаёт администратора из ADMIN_EMAIL и ADMIN_PASSWORD, если его ещё нет"
 
     def handle(self, *args, **options):

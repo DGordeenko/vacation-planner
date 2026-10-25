@@ -11,11 +11,12 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from django.core.management import call_command
+from django.db import transaction
 
 from audit.context import acting_as
 from company.models import AbsenceReason, CompanySettings, Holiday
 from demo import data
-from demo.db import DEMO_ALIAS, same_database_as_default, use_demo_database
+from demo.db import DEMO_ALIAS, demo_enabled, same_database_as_default, use_demo_database
 from employees.importers import import_employees
 from employees.models import Employee, Tag
 from schedule import approvals, calculations
@@ -39,6 +40,9 @@ class LoadReport:
 
 def load(stdout=None) -> LoadReport:
     """Очистить демо-базу и наполнить её заново."""
+    if not demo_enabled():
+        raise DemoLoadError(
+            "Демо-режим выключен. Включается явно: DEMO_MODE_ENABLED=True.")
     if same_database_as_default():
         raise DemoLoadError(
             "DEMO_DATABASE_URL указывает на рабочую базу. Загрузка демо-данных "
@@ -48,7 +52,10 @@ def load(stdout=None) -> LoadReport:
     # очистка — единственная операция, которую нельзя направить не туда.
     call_command("flush", database=DEMO_ALIAS, interactive=False, verbosity=0)
 
-    with use_demo_database():
+    # Наполнение — одной транзакцией: при сбое демо-база остаётся пустой,
+    # а не наполовину заполненной. С пустой базой кнопка демо на экране
+    # входа просто не показывается, а не ведёт в сломанную компанию.
+    with use_demo_database(), transaction.atomic():
         with acting_as(None, source="demo"):
             return _fill(stdout)
 
