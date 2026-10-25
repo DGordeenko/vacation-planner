@@ -33,13 +33,32 @@ def round_days(value: Decimal) -> int:
 # Накопление отпускных дней
 # --------------------------------------------------------------------------
 
-def accrual_for_month(employee: Employee, year: int, month: int, rate: Decimal) -> Decimal:
+def accrual_start(employee: Employee) -> date:
+    """С какого дня начисляются отпускные дни.
+
+    Если при загрузке кадровой выгрузки задан начальный остаток, начисление
+    идёт со дня, следующего за датой остатка: остаток уже включает всё,
+    что было начислено и использовано до него. Иначе — с даты приёма.
+    Без этого правила остаток прибавлялся к начислению за весь стаж,
+    и у сотрудника с 2008 года выходило больше 500 дней.
+    """
+    migration = (VacationLedger.objects
+                 .filter(employee=employee,
+                         reason=VacationLedger.Reason.INITIAL_MIGRATION)
+                 .order_by("-entry_date").first())
+    if migration is None:
+        return employee.hire_date
+    return max(employee.hire_date, migration.entry_date + timedelta(days=1))
+
+
+def accrual_for_month(employee: Employee, year: int, month: int, rate: Decimal,
+                      start_date: date = None) -> Decimal:
     """Начисление за месяц. За неполный месяц — пропорционально дням в штате."""
     total_days = _days_in_month(year, month)
     period_start = date(year, month, 1)
     period_end = date(year, month, total_days)
 
-    start = max(period_start, employee.hire_date)
+    start = max(period_start, start_date or employee.hire_date)
     end = period_end
     if employee.termination_date and employee.termination_date < end:
         end = employee.termination_date
@@ -55,22 +74,25 @@ def accrual_for_month(employee: Employee, year: int, month: int, rate: Decimal) 
     return portion.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def accrued_total(employee: Employee, until: date, rate: Decimal) -> Decimal:
-    """Сумма начислений с даты приёма по указанную дату включительно.
+def accrued_total(employee: Employee, until: date, rate: Decimal,
+                  start_date: date = None) -> Decimal:
+    """Сумма начислений с даты начала начисления по указанную дату включительно.
 
-    Месяц засчитывается, когда он завершился (или когда `until` внутри него —
-    тогда пропорционально прожитой части).
+    Дата начала — дата приёма либо день после начального остатка
+    (см. accrual_start). Месяц засчитывается, когда он завершился
+    (или когда `until` внутри него — тогда пропорционально прожитой части).
     """
+    start_date = start_date or employee.hire_date
     total = Decimal("0.00")
-    year, month = employee.hire_date.year, employee.hire_date.month
+    year, month = start_date.year, start_date.month
 
     while date(year, month, 1) <= until:
         month_end = _month_end(year, month)
         if month_end <= until:
-            total += accrual_for_month(employee, year, month, rate)
+            total += accrual_for_month(employee, year, month, rate, start_date)
         else:
             # Незавершённый месяц — считаем пропорционально до `until`.
-            start = max(date(year, month, 1), employee.hire_date)
+            start = max(date(year, month, 1), start_date)
             if until >= start:
                 days = (until - start).days + 1
                 total += (rate * Decimal(days) / Decimal(_days_in_month(year, month))).quantize(
@@ -91,7 +113,7 @@ def balance_on(employee: Employee, on_date: date) -> Decimal:
     settings_row = CompanySettings.get_solo()
     rate = settings_row.monthly_accrual_rate
 
-    accrued = accrued_total(employee, on_date, rate)
+    accrued = accrued_total(employee, on_date, rate, accrual_start(employee))
 
     manual = VacationLedger.objects.filter(
         employee=employee, entry_date__lte=on_date

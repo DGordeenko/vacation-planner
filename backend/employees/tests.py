@@ -64,6 +64,17 @@ class ImportBasicsTests(TestCase):
             reason=VacationLedger.Reason.INITIAL_MIGRATION)
         self.assertEqual(row.days_delta, Decimal("31.50"))
 
+    def test_initial_balance_dated_on_import_day(self):
+        """Остаток задаётся на дату загрузки, и в этот день баланс равен ему:
+        начисление за стаж до загрузки уже входит в остаток."""
+        from schedule.calculations import balance_on
+        load(CLEAN)
+        employee = Employee.objects.get(employee_number="1001")
+        row = VacationLedger.objects.get(
+            employee=employee, reason=VacationLedger.Reason.INITIAL_MIGRATION)
+        self.assertEqual(row.entry_date, date.today())
+        self.assertEqual(balance_on(employee, date.today()), Decimal("31.50"))
+
     def test_tags_auto_and_manual(self):
         load(CLEAN)
         lead = Employee.objects.get(employee_number="1002")
