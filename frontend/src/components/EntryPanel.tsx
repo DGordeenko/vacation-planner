@@ -1,11 +1,39 @@
 import { fmt } from "../dates";
-import type { ScheduleEntry, ValidationResult } from "../types";
+import type { ScheduleEntry, ValidationResult, Violation } from "../types";
+
+/** Нарушение с подсказкой, что делать, и списком коллег при пересечении. */
+function ViolationCard({ violation, hint }: { violation: Violation; hint: string }) {
+  return (
+    <div className={`vs-issue${violation.can_be_approved ? "" : " hard"}`}>
+      <div className="vs-issue-name">{violation.name}</div>
+      <div className="vs-issue-text">{violation.message}</div>
+      {violation.colleagues.length > 0 && (
+        <ul className="vs-issue-people">
+          {violation.colleagues.map((person) => (
+            <li key={`${person.name}-${person.date_from}`}>
+              <span>{person.name}</span>
+              <span className="vs-muted">{fmt(person.date_from)} — {fmt(person.date_to)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="vs-issue-text">{hint}</div>
+    </div>
+  );
+}
+
+function PanelClose({ onClose }: { onClose: () => void }) {
+  return (
+    <button className="vs-x vs-panel-close" onClick={onClose} aria-label="Закрыть">✕</button>
+  );
+}
 
 interface SelectionProps {
   selection: { from: string; to: string };
   check: ValidationResult | null;
   checking: boolean;
   saving: boolean;
+  saveError: string | null;
   managerName: string | null;
   onCancel: () => void;
   onSave: () => void;
@@ -13,16 +41,18 @@ interface SelectionProps {
 
 /** Карточка проверки: результат приходит с сервера, клиент ничего не считает. */
 export function SelectionPanel({
-  selection, check, checking, saving, managerName, onCancel, onSave,
+  selection, check, checking, saving, saveError, managerName, onCancel, onSave,
 }: SelectionProps) {
   const extension = check?.holiday_extension;
   const hardBlock = check?.violations.some((v) => !v.can_be_approved) ?? false;
+  const manager = managerName ? ` руководителю: ${managerName}` : " руководителю";
 
   return (
     <div className="vs-panel" role="dialog" aria-label="Проверка отпуска">
       <div className="vs-panel-head">
         <strong>{fmt(selection.from)} — {fmt(selection.to)}</strong>
         {check && <span className="vs-muted">{check.vacation_days} отпускных дней</span>}
+        <PanelClose onClose={onCancel} />
       </div>
 
       <div className="vs-panel-body">
@@ -48,16 +78,10 @@ export function SelectionPanel({
             )}
 
             {check.violations.map((violation) => (
-              <div key={violation.code}
-                className={`vs-issue${violation.can_be_approved ? "" : " hard"}`}>
-                <div className="vs-issue-name">{violation.name}</div>
-                <div className="vs-issue-text">{violation.message}</div>
-                <div className="vs-issue-text">
-                  {violation.can_be_approved
-                    ? `Можно запросить подтверждение${managerName ? ` у ${managerName}` : ""}.`
-                    : "Подтверждению не подлежит — выберите другой период."}
-                </div>
-              </div>
+              <ViolationCard key={violation.code} violation={violation}
+                hint={violation.can_be_approved
+                  ? `Отпуск сохранится черновиком, запрос на подтверждение уйдёт${manager}.`
+                  : "Подтверждению не подлежит — выберите другой период."} />
             ))}
 
             {check.is_valid && (
@@ -65,6 +89,8 @@ export function SelectionPanel({
             )}
           </>
         )}
+
+        {saveError && <div className="vs-issue hard"><div className="vs-issue-text">{saveError}</div></div>}
       </div>
 
       <div className="vs-panel-foot">
@@ -74,7 +100,7 @@ export function SelectionPanel({
           {saving ? "Сохраняем…"
             : check?.is_valid
               ? (extension && extension.added_days > 0 ? "Сохранить с продлением" : "Сохранить")
-              : "Запросить подтверждение"}
+              : "Сохранить и запросить подтверждение"}
         </button>
       </div>
     </div>
@@ -83,12 +109,14 @@ export function SelectionPanel({
 
 interface EntryProps {
   entry: ScheduleEntry;
+  managerName: string | null;
   onClose: () => void;
   onDelete: () => void;
 }
 
-export function ExistingEntryPanel({ entry, onClose, onDelete }: EntryProps) {
+export function ExistingEntryPanel({ entry, managerName, onClose, onDelete }: EntryProps) {
   const editable = entry.status === "draft";
+  const awaiting = entry.pending_exceptions.length > 0;
   return (
     <div className="vs-panel" role="dialog" aria-label="Внесённый отпуск">
       <div className="vs-panel-head">
@@ -96,13 +124,19 @@ export function ExistingEntryPanel({ entry, onClose, onDelete }: EntryProps) {
         {entry.vacation_days !== null && (
           <span className="vs-muted">{entry.vacation_days} отпускных дней</span>
         )}
+        <PanelClose onClose={onClose} />
       </div>
       <div className="vs-panel-body">
         <div className="vs-row">
           <dt>Статус</dt>
           <dd>{entry.status === "approved" ? "Согласован"
-            : entry.status === "pending_approval" ? "На согласовании" : "Черновик"}</dd>
+            : entry.status === "pending_approval" ? "На согласовании"
+              : awaiting ? "Черновик, ждёт подтверждения" : "Черновик"}</dd>
         </div>
+        {entry.pending_exceptions.map((violation) => (
+          <ViolationCard key={violation.code} violation={violation}
+            hint={`Запрос на подтверждение отправлен${managerName ? `: ${managerName}` : " руководителю"}. Отправить график можно после его решения.`} />
+        ))}
         <p className="vs-muted vs-small">
           {editable
             ? "Чтобы изменить даты, удалите отпуск и выберите новый период."

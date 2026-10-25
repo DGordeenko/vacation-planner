@@ -39,6 +39,8 @@ export default function App() {
   const [openEntry, setOpenEntry] = useState<ScheduleEntry | null>(null);
   const [activeTagId, setActiveTagId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"schedule" | "holidays">("schedule");
 
@@ -73,6 +75,24 @@ export default function App() {
   }, [authorized]);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  /* Итог действия держится 10 секунд и закрывается крестиком. */
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  /* Esc закрывает открытую панель. */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setSelection(null); setSaveError(null); setOpenEntry(null);
+      setAnchor(null); setHover(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   /* Проверка выполняется на сервере — той же логикой, что и сохранение. */
   useEffect(() => {
@@ -126,11 +146,19 @@ export default function App() {
       const extension = check?.holiday_extension;
       const to = extension && extension.added_days > 0
         ? extension.suggested_date_to : selection.to;
-      await api.createEntry(selection.from, to);
+      const entry = await api.createEntry(selection.from, to);
       setSelection(null);
+      setSaveError(null);
+      const period = `${fmt(entry.date_from)} — ${fmt(entry.date_to || entry.date_from)}`;
+      setNotice(entry.pending_exceptions.length > 0
+        ? `Отпуск ${period} сохранён черновиком, запрос на подтверждение отправлен`
+          + `${summary?.manager_name ? ` руководителю: ${summary.manager_name}` : " руководителю"}.`
+          + " Отправить график можно после его решения."
+        : `Отпуск ${period} сохранён.`);
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось сохранить");
+      // Ошибка — в самой панели: туда сейчас смотрит пользователь.
+      setSaveError(err instanceof Error ? err.message : "Не удалось сохранить");
     } finally {
       setSaving(false);
     }
@@ -203,6 +231,8 @@ export default function App() {
     setOpenEntry(null);
     setActiveTagId(null);
     setError(null);
+    setSaveError(null);
+    setNotice(null);
     setView("schedule");
   }
 
@@ -217,7 +247,7 @@ export default function App() {
   const contrast = branding.brand_contrast_color || bestContrast(brand);
 
   return (
-    <div className="vs-root" style={{
+    <div className={`vs-root${view === "schedule" && (selection || openEntry) ? " has-panel" : ""}`} style={{
       ["--brand" as string]: brand,
       ["--brand-contrast" as string]: contrast,
       ["--brand-radius" as string]: branding.brand_radius,
@@ -278,6 +308,10 @@ export default function App() {
                   <li className="vs-item" key={entry.id}>
                     <span>{fmt(entry.date_from)} — {fmt(entry.date_to || entry.date_from)}</span>
                     <span className="vs-item-days">{entry.vacation_days} дн.</span>
+                    {entry.pending_exceptions.length > 0 && (
+                      <span className="vs-item-flag" title={entry.pending_exceptions
+                        .map((v) => v.name).join(", ")}>ждёт подтверждения</span>
+                    )}
                     {!locked && entry.status === "draft" && (
                       <button className="vs-x" onClick={() => remove(entry.id)}
                         aria-label="Удалить отпуск">✕</button>
@@ -384,13 +418,20 @@ export default function App() {
 
       {view === "schedule" && selection && (
         <SelectionPanel selection={selection} check={check} checking={checking}
-          saving={saving} managerName={summary.manager_name}
-          onCancel={() => setSelection(null)} onSave={save} />
+          saving={saving} saveError={saveError} managerName={summary.manager_name}
+          onCancel={() => { setSelection(null); setSaveError(null); }} onSave={save} />
       )}
 
       {view === "schedule" && openEntry && !selection && (
         <ExistingEntryPanel entry={openEntry} onClose={() => setOpenEntry(null)}
-          onDelete={() => remove(openEntry.id)} />
+          onDelete={() => remove(openEntry.id)} managerName={summary.manager_name} />
+      )}
+
+      {notice && (
+        <div className="vs-toast" role="status">
+          <span>{notice}</span>
+          <button className="vs-x" onClick={() => setNotice(null)} aria-label="Закрыть">✕</button>
+        </div>
       )}
     </div>
   );

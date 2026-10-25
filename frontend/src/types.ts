@@ -27,6 +27,15 @@ export interface ScheduleEntry {
   status: EntryStatus;
   vacation_days: number | null;
   extended_by_holiday_days: number;
+  /** Нарушения черновика, которые ждут подтверждения руководителя. */
+  pending_exceptions: Violation[];
+}
+
+/** Коллега, из-за отпуска которого исчерпан лимит по тегу. */
+export interface ConflictingColleague {
+  name: string;
+  date_from: string;
+  date_to: string;
 }
 
 export interface Violation {
@@ -34,6 +43,7 @@ export interface Violation {
   name: string;
   message: string;
   can_be_approved: boolean;
+  colleagues: ConflictingColleague[];
 }
 
 export interface ValidationResult {
