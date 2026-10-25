@@ -115,7 +115,9 @@ interface EntryProps {
 }
 
 export function ExistingEntryPanel({ entry, managerName, onClose, onDelete }: EntryProps) {
-  const editable = entry.status === "draft";
+  const rejected = entry.status === "rejected";
+  // Отклонённый отпуск в график не входит — его можно убрать из списка.
+  const editable = entry.status === "draft" || rejected;
   const awaiting = entry.pending_exceptions.length > 0;
   return (
     <div className="vs-panel" role="dialog" aria-label="Внесённый отпуск">
@@ -130,6 +132,7 @@ export function ExistingEntryPanel({ entry, managerName, onClose, onDelete }: En
         <div className="vs-row">
           <dt>Статус</dt>
           <dd>{entry.status === "approved" ? "Согласован"
+            : rejected ? "Не подтверждён руководителем"
             : entry.status === "pending_approval" ? "На согласовании"
               : awaiting ? "Черновик, ждёт подтверждения" : "Черновик"}</dd>
         </div>
@@ -137,8 +140,16 @@ export function ExistingEntryPanel({ entry, managerName, onClose, onDelete }: En
           <ViolationCard key={violation.code} violation={violation}
             hint={`Запрос на подтверждение отправлен${managerName ? `: ${managerName}` : " руководителю"}. Отправить график можно после его решения.`} />
         ))}
+        {rejected && (
+          <div className="vs-issue hard">
+            <div className="vs-issue-name">Причина отказа</div>
+            <div className="vs-issue-text">{entry.rejection_comment || "Не указана"}</div>
+          </div>
+        )}
         <p className="vs-muted vs-small">
-          {editable
+          {rejected
+            ? "Эти даты не входят в график. Удалите отпуск и выберите другой период."
+            : editable
             ? "Чтобы изменить даты, удалите отпуск и выберите новый период."
             : "Отпуск отправлен на согласование — отзовите график, чтобы править."}
         </p>

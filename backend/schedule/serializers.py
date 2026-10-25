@@ -50,9 +50,9 @@ class ScheduleEntrySerializer(serializers.ModelSerializer):
             "id", "employee", "employee_name", "record_type", "date_from", "date_to",
             "reason", "custom_reason_text", "task_link", "overtime_hours",
             "rvd_compensation_type", "extended_by_holiday_days", "status",
-            "vacation_days", "pending_exceptions", "created_at",
+            "vacation_days", "pending_exceptions", "rejection_comment", "created_at",
         ]
-        read_only_fields = ["extended_by_holiday_days", "created_at"]
+        read_only_fields = ["extended_by_holiday_days", "rejection_comment", "created_at"]
 
     def get_vacation_days(self, obj):
         from schedule.calculations import vacation_days

@@ -88,6 +88,9 @@ class ScheduleEntry(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Причина отказа руководителя: сотрудник видит её у самого отпуска,
+    # а не только в ленте уведомлений, где она уходит из видимых пяти.
+    rejection_comment = models.TextField(blank=True)
 
     class Meta:
         ordering = ["date_from"]

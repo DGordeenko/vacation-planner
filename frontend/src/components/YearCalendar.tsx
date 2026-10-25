@@ -48,7 +48,8 @@ export default function YearCalendar({
               if (holiday?.day_type === "holiday") classes.push("holiday");
               if (conflict && !entry) classes.push("conflict");
               if (entry) {
-                classes.push(entry.status === "draft" ? "draft" : "booked");
+                classes.push(entry.status === "draft" ? "draft"
+                  : entry.status === "rejected" ? "rejected" : "booked");
                 if (entry.pending_exceptions?.length) classes.push("awaiting");
               }
               if (marking) classes.push("marking");

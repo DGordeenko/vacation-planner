@@ -58,10 +58,13 @@ body {
 
 /* Раскладка */
 .vs-shell {
-  display: grid; grid-template-columns: 276px 1fr; gap: 24px;
+  display: grid; grid-template-columns: 276px minmax(0, 1fr); gap: 24px;
   padding: 24px; align-items: start;
 }
-.vs-rail { position: sticky; top: 84px; display: grid; gap: 14px; }
+/* min-width: 0 — колонка не растягивается содержимым, даже если в нём
+   окажется длинная неразрывная строка. */
+.vs-rail { position: sticky; top: 84px; display: grid; gap: 14px; min-width: 0; }
+.vs-note-item span { overflow-wrap: anywhere; }
 @media (max-width: 940px) {
   .vs-shell { grid-template-columns: 1fr; }
   .vs-rail { position: static; }
@@ -389,7 +392,14 @@ body {
 }
 .vs-issue-people li { display: flex; justify-content: space-between; gap: 12px; }
 .vs-item { flex-wrap: wrap; }
-.vs-item > span:first-child { white-space: nowrap; }
+/* Только даты не переносятся: правило для любого первого span ломало
+   ленту уведомлений — длинный текст растягивал всю колонку. */
+.vs-item-dates { white-space: nowrap; }
+.vs-item-flag.rejected { color: var(--alert); border-color: #e9cccc; background: #fdf3f3; }
+.vs-day.rejected {
+  background: var(--paper); color: var(--alert); text-decoration: line-through;
+  box-shadow: inset 0 0 0 1.5px #e9cccc;
+}
 /* Пометка — отдельной строкой под датами: в узкой колонке иначе всё мнётся. */
 .vs-item-flag {
   order: 10;

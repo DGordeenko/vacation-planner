@@ -200,7 +200,8 @@ def reject_exception(entry, approver, comment):
         raise ApprovalError(
             "Отказать в исключении может непосредственный руководитель или администратор")
     entry.status = ScheduleEntry.Status.REJECTED
-    entry.save(update_fields=["status", "updated_at"])
+    entry.rejection_comment = comment.strip()
+    entry.save(update_fields=["status", "rejection_comment", "updated_at"])
     notify(entry.employee, Notification.NotificationType.APPROVAL_DECIDED,
            f"{approver.full_name} не подтвердил отпуск "
            f"{entry.date_from:%d.%m.%Y}—{entry.effective_date_to:%d.%m.%Y}: "

@@ -100,7 +100,7 @@ class ApiContractTests(TestCase):
                     "date_to", "reason", "custom_reason_text", "task_link",
                     "overtime_hours", "rvd_compensation_type",
                     "extended_by_holiday_days", "status", "vacation_days",
-                    "pending_exceptions", "created_at"}
+                    "pending_exceptions", "rejection_comment", "created_at"}
         self.assertEqual(expected, set(response.json()))
 
     def test_blocked_creation_returns_violations(self):

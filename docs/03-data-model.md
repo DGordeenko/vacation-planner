@@ -127,6 +127,7 @@
 | rvd_compensation_type | enum (`day_off`, `payment`), nullable | Вид компенсации за работу в выходной день (только для `rvd`, при включённом учёте компенсации) |
 | extended_by_holiday_days | int, default 0 | На сколько дней продлён отпуск из-за праздников, попавших в период |
 | status | enum (`draft`, `pending_approval`, `approved`, `rejected`, `cancelled`) | Статус записи |
+| rejection_comment | text | Причина отказа руководителя в исключении. Заполняется вместе со статусом `rejected`; сотрудник видит её у самого отпуска, а не только в ленте уведомлений |
 | created_by_id | FK → Employee | Кто внёс запись (сотрудник или администратор при загрузке CSV) |
 | created_at / updated_at | datetime | Служебные |
 
