@@ -13,18 +13,23 @@ from schedule.models import ScheduleEntry, ValidationRule, VacationLedger
 
 
 def seed_rules():
-    ValidationRule.objects.create(
-        code="min_annual_days", name="Годовая норма", threshold_value=28)
-    ValidationRule.objects.create(
-        code="min_continuous_days", name="Непрерывный отпуск", threshold_value=14)
-    ValidationRule.objects.create(
-        code="max_continuous_days", name="Длинный отпуск", threshold_value=14)
-    ValidationRule.objects.create(
-        code="balance_overrun", name="Превышение баланса", threshold_value=7)
-    ValidationRule.objects.create(
-        code="no_weekend_captured", name="Без захвата выходных")
-    ValidationRule.objects.create(
-        code="tag_limit_exceeded", name="Лимит по тегу")
+    """Правила с порогами по умолчанию.
+
+    Справочник создаёт миграция 0006; здесь пороги приводятся к значениям,
+    на которые рассчитаны тесты, даже если миграция их поменяет.
+    """
+    for code, name, threshold in [
+        ("min_annual_days", "Годовая норма", 28),
+        ("min_continuous_days", "Непрерывный отпуск", 14),
+        ("max_continuous_workdays", "Длительное отсутствие", 11),
+        ("annual_ceiling", "Годовой потолок", 42),
+        ("balance_overrun", "Превышение баланса", 7),
+        ("no_weekend_captured", "Без захвата выходных", None),
+        ("tag_limit_exceeded", "Лимит по тегу", None),
+    ]:
+        ValidationRule.objects.update_or_create(
+            code=code, defaults={"name": name, "threshold_value": threshold,
+                                 "is_enabled": True})
 
 
 class AccrualTests(TestCase):
@@ -211,18 +216,18 @@ class RuleTests(TestCase):
 
     def test_d7_threshold_change_without_code_change(self):
         """D7: изменение порога в справочнике меняет поведение проверки."""
-        rule = ValidationRule.objects.get(code="max_continuous_days")
+        rule = ValidationRule.objects.get(code="max_continuous_workdays")
         result = calculations.validate_entry(
             self.employee, date(2027, 3, 1), date(2027, 3, 12),
             ScheduleEntry.RecordType.VACATION)
-        self.assertNotIn("max_continuous_days", [v.code for v in result.violations])
+        self.assertNotIn("max_continuous_workdays", [v.code for v in result.violations])
 
         rule.threshold_value = 5
         rule.save()
         result = calculations.validate_entry(
             self.employee, date(2027, 3, 1), date(2027, 3, 12),
             ScheduleEntry.RecordType.VACATION)
-        self.assertIn("max_continuous_days", [v.code for v in result.violations])
+        self.assertIn("max_continuous_workdays", [v.code for v in result.violations])
 
     def test_d8_disabled_rule_not_checked(self):
         """D8: отключённое правило не срабатывает."""

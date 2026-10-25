@@ -165,7 +165,7 @@
 
 | Поле | Тип | Описание |
 |---|---|---|
-| code | string (PK) | Код правила (`min_annual_days`, `min_continuous_days`, `max_continuous_days`, `balance_overrun`, `no_weekend_captured`, `tag_limit_exceeded`) |
+| code | string (PK) | Код правила (`min_annual_days`, `min_continuous_days`, `max_continuous_workdays`, `annual_ceiling`, `balance_overrun`, `no_weekend_captured`, `tag_limit_exceeded`) |
 | name | string | Человеко-читаемое название |
 | description | text | Формулировка правила для отображения в интерфейсе при блокировке |
 | is_enabled | bool | Включено ли правило |
