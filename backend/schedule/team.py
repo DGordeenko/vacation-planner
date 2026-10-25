@@ -124,10 +124,86 @@ def _parse_date(value, default):
         return None
 
 
+def _pending_approval(entry):
+    """Согласование, в котором сейчас находится отпуск, — последнее открытое за его год."""
+    return (ScheduleApproval.objects
+            .filter(employee_id=entry.employee_id, year=entry.date_from.year,
+                    status=ScheduleApproval.Status.PENDING)
+            .order_by("-created_at").first())
+
+
+def _current_step(approval):
+    """Шаг, на котором стоит решение: первый нерешённый по порядку."""
+    return (approval.steps.filter(status=ScheduleApproval.Status.PENDING)
+            .select_related("approver").order_by("order").first())
+
+
+def _exception_approver_name(entry):
+    """Кому ушёл запрос подтверждения исключения по черновику."""
+    note = (Notification.objects
+            .filter(notification_type=Notification.NotificationType.EXCEPTION_REQUIRED,
+                    related_entity_id=entry.id)
+            .select_related("recipient").order_by("-created_at").first())
+    return note.recipient.full_name if note else None
+
+
+def _waiting_for(entries):
+    """Короткая подпись «сейчас у кого» для неутверждённых отпусков.
+
+    Черновик ждёт руководителя, только пока у него есть неподтверждённое
+    нарушение и по нему ушёл запрос; проверка правил дорогая, поэтому
+    выполняется лишь для черновиков, по которым запрос был.
+    """
+    result = {}
+    requested = set(Notification.objects.filter(
+        notification_type=Notification.NotificationType.EXCEPTION_REQUIRED,
+        related_entity_id__in=[e.id for e in entries if e.status == ScheduleEntry.Status.DRAFT],
+    ).values_list("related_entity_id", flat=True))
+    approvals_cache = {}
+    for entry in entries:
+        if entry.record_type != ScheduleEntry.RecordType.VACATION:
+            continue
+        if entry.status == ScheduleEntry.Status.PENDING_APPROVAL:
+            key = (entry.employee_id, entry.date_from.year)
+            if key not in approvals_cache:
+                approval = _pending_approval(entry)
+                step = _current_step(approval) if approval else None
+                approvals_cache[key] = step.approver.full_name if step else None
+            result[entry.id] = approvals_cache[key]
+        elif (entry.status == ScheduleEntry.Status.DRAFT and entry.id in requested
+              and approvals.unresolved_violations(entry)):
+            result[entry.id] = _exception_approver_name(entry)
+    return result
+
+
+def _calendar_scope(user, scope):
+    """Кого показывает календарь и какие записи видны.
+
+    Возвращает (сотрудники, id своей структуры). По умолчанию руководитель
+    видит свою ветку. В режиме «все подразделения» — всю компанию, но по
+    чужим подразделениям только отпуска на согласовании и утверждённые:
+    черновик — личный план, он ещё меняется. Администратор видит всех всегда.
+    """
+    employees = Employee.objects.filter(status=Employee.Status.ACTIVE).select_related(
+        "org_unit")
+    if user.is_admin:
+        return employees, None
+    own = set(user.visible_employee_ids())
+    if scope == "all":
+        return employees, own
+    return employees.filter(id__in=own), own
+
+
+def _entry_visible(entry, own):
+    return own is None or entry.employee_id in own or entry.status in ACTIVE_STATUSES
+
+
 class TeamCalendarView(APIView):
     """Сводный календарь: строки — сотрудники, отпуска и дни исчерпанного лимита.
 
-    Доступен руководителям в пределах их структуры и администратору (ФЗ 4.7).
+    Доступен руководителям и администратору (ФЗ 4.7). Руководитель по умолчанию
+    видит свою структуру, по выбору — график всех подразделений
+    (`scope=all`, см. `_calendar_scope`).
     Лимит считается по всем сотрудникам с тегом, а не только по видимым:
     он общий для компании.
     """
@@ -148,10 +224,8 @@ class TeamCalendarView(APIView):
             return Response({"detail": "Период не длиннее квартала"},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        employees = Employee.objects.filter(status=Employee.Status.ACTIVE).select_related(
-            "org_unit")
-        if not user.is_admin:
-            employees = employees.filter(id__in=user.visible_employee_ids())
+        scope = "all" if request.query_params.get("scope") == "all" else "mine"
+        employees, own = _calendar_scope(user, scope)
 
         tag = None
         tag_id = request.query_params.get("tag_id")
@@ -164,23 +238,85 @@ class TeamCalendarView(APIView):
             employee__in=employees, record_type__in=ABSENCE_TYPES,
             date_from__lte=date_to,
         ).exclude(status__in=[ScheduleEntry.Status.CANCELLED, ScheduleEntry.Status.REJECTED])
+        entries = [e for e in entries
+                   if e.effective_date_to >= date_from and _entry_visible(e, own)]
+        waiting = _waiting_for(entries)
         by_employee = {}
         for entry in entries:
-            if entry.effective_date_to >= date_from:
-                by_employee.setdefault(entry.employee_id, []).append(_entry_row(entry))
+            by_employee.setdefault(entry.employee_id, []).append(
+                {**_entry_row(entry), "waiting_for": waiting.get(entry.id)})
 
         return Response({
             "date_from": date_from,
             "date_to": date_to,
+            "scope": "all" if own is None else scope,
+            "can_view_all": own is not None,
             "tag": ({"id": str(tag.id), "name": tag.name,
                      "limit": tag.max_simultaneous_absence} if tag else None),
             "limit_reached": _limit_reached_days(tag, date_from, date_to) if tag else [],
             "rows": [
                 {"employee_id": str(e.id), "full_name": e.full_name,
                  "org_unit": e.org_unit.name if e.org_unit else None,
+                 "own": own is None or e.id in own,
                  "entries": sorted(by_employee.get(e.id, []), key=lambda r: r["date_from"])}
                 for e in employees
             ],
+        })
+
+
+class TeamEntryDetailView(APIView):
+    """Карточка отпуска в календаре команды: статус и у кого он на решении.
+
+    Видимость — та же, что в календаре: своя структура целиком, чужие
+    подразделения — только отпуска на согласовании и утверждённые.
+    Комментарии согласующих по чужим подразделениям не показываются.
+    """
+
+    def get(self, request, entry_id):
+        user = request.user
+        if not (user.is_admin or user.managed_units.exists()):
+            return Response({"detail": "Календарь команды доступен руководителям"},
+                            status=status.HTTP_403_FORBIDDEN)
+        entry = get_object_or_404(
+            ScheduleEntry.objects.select_related("employee", "employee__org_unit"),
+            id=entry_id, record_type__in=ABSENCE_TYPES)
+        _, own = _calendar_scope(user, "all")
+        if entry.status in (ScheduleEntry.Status.CANCELLED, ScheduleEntry.Status.REJECTED) \
+                or not _entry_visible(entry, own):
+            return Response({"detail": "Не найдено"}, status=status.HTTP_404_NOT_FOUND)
+        is_own = own is None or entry.employee_id in own
+
+        steps = []
+        if entry.status == ScheduleEntry.Status.PENDING_APPROVAL:
+            approval = _pending_approval(entry)
+            if approval:
+                current = _current_step(approval)
+                for step in ApprovalStepSerializer(
+                        approval.steps.select_related("approver").order_by("order"),
+                        many=True).data:
+                    step["is_current"] = bool(current and step["id"] == str(current.id))
+                    if not is_own:
+                        step["comment"] = ""
+                    steps.append(step)
+
+        exception = None
+        if entry.status == ScheduleEntry.Status.DRAFT \
+                and entry.record_type == ScheduleEntry.RecordType.VACATION:
+            violations = approvals.unresolved_violations(entry)
+            approver = _exception_approver_name(entry) if violations else None
+            if approver:
+                exception = {
+                    "approver_name": approver,
+                    "violations": ViolationSerializer(
+                        [v.__dict__ for v in violations], many=True).data,
+                }
+
+        return Response({
+            **_entry_row(entry),
+            "employee_name": entry.employee.full_name,
+            "org_unit": entry.employee.org_unit.name if entry.employee.org_unit else None,
+            "steps": steps,
+            "exception": exception,
         })
 
 

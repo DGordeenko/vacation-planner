@@ -183,8 +183,12 @@ EXCEPTION_DECISION_FIELDS = TEAM_ENTRY_FIELDS | {"employee_id", "employee_name",
 APPROVAL_STEP_FIELDS = {"id", "order", "level", "level_display", "approver", "approver_name",
                         "status", "comment", "decided_at"}
 # types.ts: TeamCalendar, TagRow, TagMember, EmployeeBrief
-TEAM_CALENDAR_FIELDS = {"date_from", "date_to", "tag", "limit_reached", "rows"}
-TEAM_ROW_FIELDS = {"employee_id", "full_name", "org_unit", "entries"}
+TEAM_CALENDAR_FIELDS = {"date_from", "date_to", "scope", "can_view_all", "tag",
+                        "limit_reached", "rows"}
+TEAM_ROW_FIELDS = {"employee_id", "full_name", "org_unit", "own", "entries"}
+TEAM_CALENDAR_ENTRY_FIELDS = TEAM_ENTRY_FIELDS | {"waiting_for"}
+TEAM_ENTRY_DETAIL_FIELDS = TEAM_ENTRY_FIELDS | {"employee_name", "org_unit", "steps",
+                                                "exception"}
 TAG_FIELDS = {"id", "name", "max_simultaneous_absence", "members_count", "manual_count",
               "is_org_unit_tag"}
 TAG_MEMBER_FIELDS = {"employee_id", "full_name", "employee_number", "org_unit", "source",
@@ -238,6 +242,11 @@ class ManagerScreensContractTests(TestCase):
         self.assertEqual({"id", "name", "limit"}, set(body["tag"]))
         self.assertEqual({"date", "count"}, set(body["limit_reached"][0]))
         self.assertEqual(TEAM_ROW_FIELDS, set(body["rows"][0]))
+        entry = body["rows"][0]["entries"][0]
+        self.assertEqual(TEAM_CALENDAR_ENTRY_FIELDS, set(entry))
+        detail = self.client.get(f"/api/v1/team-calendar/entries/{entry['id']}/").json()
+        self.assertEqual(TEAM_ENTRY_DETAIL_FIELDS, set(detail))
+        self.assertEqual(APPROVAL_STEP_FIELDS | {"is_current"}, set(detail["steps"][0]))
 
     def test_tags_contract(self):
         self.assertEqual(TAG_FIELDS, set(self.client.get("/api/v1/tags/").json()[0]))

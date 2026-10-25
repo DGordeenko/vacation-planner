@@ -5,7 +5,9 @@ from rest_framework.routers import DefaultRouter
 from config.health import HealthView
 from demo.views import DemoLoginView
 from employees.tags import EmployeeSearchView, TagViewSet
-from schedule.team import DecisionsView, ExceptionRejectView, TeamCalendarView
+from schedule.team import (
+    DecisionsView, ExceptionRejectView, TeamCalendarView, TeamEntryDetailView,
+)
 
 from audit.views import AuditLogViewSet
 from company.views import HolidayAdminViewSet
@@ -77,6 +79,7 @@ urlpatterns = [
          AmendmentActionView.as_view()),
     path("api/v1/decisions/", DecisionsView.as_view()),
     path("api/v1/team-calendar/", TeamCalendarView.as_view()),
+    path("api/v1/team-calendar/entries/<uuid:entry_id>/", TeamEntryDetailView.as_view()),
     path("api/v1/schedule-entries/<uuid:entry_id>/exception-rejection/",
          ExceptionRejectView.as_view()),
     path("api/v1/schedule-entries/<uuid:entry_id>/exception-approvals/",
