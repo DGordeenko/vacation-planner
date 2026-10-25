@@ -109,6 +109,64 @@ def approve_exception(entry, rule_code, approver, comment):
     return approval
 
 
+def exception_approver(employee):
+    """Кто подтверждает исключение: непосредственный руководитель,
+    у вершины структуры — администратор (как в цепочке согласования)."""
+    if employee.manager:
+        return employee.manager
+    chain = build_chain(employee)
+    return chain[0][0] if chain else None
+
+
+def request_exception(entry, violations):
+    """Запрос подтверждения исключения по черновику отпуска.
+
+    Уведомление ссылается на сам отпуск: руководителю есть что подтвердить.
+    Повторный запрос по той же записи не дублирует непрочитанное уведомление.
+    """
+    approver = exception_approver(entry.employee)
+    if approver is None:
+        return None
+    if Notification.objects.filter(
+        recipient=approver,
+        notification_type=Notification.NotificationType.EXCEPTION_REQUIRED,
+        related_entity_id=entry.id, is_read=False,
+    ).exists():
+        return approver
+    rules = "; ".join(v.message for v in violations)
+    notify(approver, Notification.NotificationType.EXCEPTION_REQUIRED,
+           f"{entry.employee.full_name} просит подтвердить отпуск "
+           f"{entry.date_from:%d.%m.%Y}—{entry.effective_date_to:%d.%m.%Y}: {rules}",
+           entry)
+    return approver
+
+
+def entries_awaiting_exception(employee, year):
+    """Черновики года с неподтверждёнными нарушениями — отправка с ними запрещена."""
+    entries = ScheduleEntry.objects.filter(
+        employee=employee, record_type=ScheduleEntry.RecordType.VACATION,
+        date_from__year=year, status=ScheduleEntry.Status.DRAFT)
+    result = []
+    for entry in entries:
+        violations = unresolved_violations(entry)
+        if violations:
+            result.append((entry, violations))
+    return result
+
+
+def _raise_if_awaiting_exception(employee, year):
+    awaiting = entries_awaiting_exception(employee, year)
+    if not awaiting:
+        return
+    for entry, violations in awaiting:
+        request_exception(entry, violations)
+    periods = ", ".join(
+        f"{entry.date_from:%d.%m}—{entry.effective_date_to:%d.%m}" for entry, _ in awaiting)
+    raise ApprovalError(
+        f"Отпуска ждут подтверждения руководителя: {periods}. "
+        "Отправить график можно после его решения")
+
+
 def unresolved_violations(entry):
     """Нарушения, по которым ещё нет подтверждения руководителя."""
     result = calculations.validate_entry(
@@ -139,6 +197,8 @@ def submit_year(employee, year, actor):
                           ScheduleEntry.Status.REJECTED])
     if not entries.exists():
         raise ApprovalError("В графике нет ни одного отпуска")
+
+    _raise_if_awaiting_exception(employee, year)
 
     plan = calculations.validate_annual_plan(employee, year)
     approved_codes = set(
@@ -380,6 +440,7 @@ def submit_amendment(amendment, actor):
         raise ApprovalError("Отправить правки может только владелец графика")
 
     employee, year = amendment.employee, amendment.year
+    _raise_if_awaiting_exception(employee, year)
     changes = _changes_summary(amendment)
     if not changes["added"] and not changes["removed"]:
         raise ApprovalError("График не изменился — отправлять нечего")

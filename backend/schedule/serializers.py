@@ -20,11 +20,18 @@ class ValidationRuleSerializer(serializers.ModelSerializer):
         read_only_fields = ["code"]
 
 
+class ColleagueOnLeaveSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    date_from = serializers.DateField()
+    date_to = serializers.DateField()
+
+
 class ViolationSerializer(serializers.Serializer):
     code = serializers.CharField()
     name = serializers.CharField()
     message = serializers.CharField()
     can_be_approved = serializers.BooleanField()
+    colleagues = ColleagueOnLeaveSerializer(many=True, default=list)
 
 
 class ScheduleEntrySerializer(serializers.ModelSerializer):
@@ -35,6 +42,7 @@ class ScheduleEntrySerializer(serializers.ModelSerializer):
         queryset=Employee.objects.all(), required=False
     )
     vacation_days = serializers.SerializerMethodField()
+    pending_exceptions = serializers.SerializerMethodField()
 
     class Meta:
         model = ScheduleEntry
@@ -42,7 +50,7 @@ class ScheduleEntrySerializer(serializers.ModelSerializer):
             "id", "employee", "employee_name", "record_type", "date_from", "date_to",
             "reason", "custom_reason_text", "task_link", "overtime_hours",
             "rvd_compensation_type", "extended_by_holiday_days", "status",
-            "vacation_days", "created_at",
+            "vacation_days", "pending_exceptions", "created_at",
         ]
         read_only_fields = ["extended_by_holiday_days", "created_at"]
 
@@ -51,6 +59,20 @@ class ScheduleEntrySerializer(serializers.ModelSerializer):
         if obj.record_type != ScheduleEntry.RecordType.VACATION:
             return None
         return vacation_days(obj.date_from, obj.effective_date_to)
+
+    def get_pending_exceptions(self, obj):
+        """Нарушения черновика, которые ещё ждут подтверждения руководителя.
+
+        Пометка вычисляется, а не хранится: правило могло начать или перестать
+        срабатывать после сохранения (коллега отправил график, сменился порог).
+        Отправленные и утверждённые отпуска уже прошли проверку при отправке.
+        """
+        if (obj.record_type != ScheduleEntry.RecordType.VACATION
+                or obj.status != ScheduleEntry.Status.DRAFT):
+            return []
+        from schedule.approvals import unresolved_violations
+        return ViolationSerializer(
+            [v.__dict__ for v in unresolved_violations(obj)], many=True).data
 
 
 class ValidateRequestSerializer(serializers.Serializer):

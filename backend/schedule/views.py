@@ -121,26 +121,25 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
             employee, data["date_from"], date_to, data["record_type"]
         )
 
-        if not result.is_valid:
-            manager = employee.manager
-            for violation in result.violations:
-                if violation.can_be_approved and manager:
-                    Notification.objects.create(
-                        recipient=manager,
-                        notification_type=Notification.NotificationType.EXCEPTION_REQUIRED,
-                        message=f"{employee.full_name}: {violation.message}",
-                        related_entity_type="ScheduleEntry",
-                    )
+        if any(not v.can_be_approved for v in result.violations):
+            # Пересечение с собственным отпуском подтвердить нельзя —
+            # такую запись не сохраняем вовсе.
             return Response(
                 {
-                    "detail": "Сохранение заблокировано — требуется подтверждение руководителя",
+                    "detail": "Период нельзя сохранить — выберите другие даты",
                     "code": "validation_blocked",
                     "violations": _violations_payload(result),
                 },
                 status=status.HTTP_409_CONFLICT,
             )
 
+        # Нарушение, которое руководитель может подтвердить, не мешает
+        # сохранить черновик: иначе подтверждать было бы нечего. Черновик
+        # не занимает места в лимитах коллег, а отправить график с ним нельзя,
+        # пока руководитель не подтвердит исключение (approvals.submit_year).
         entry = serializer.save(employee=employee, created_by=request.user)
+        if result.violations:
+            approvals.request_exception(entry, result.violations)
         return Response(self.get_serializer(entry).data, status=status.HTTP_201_CREATED)
 
 

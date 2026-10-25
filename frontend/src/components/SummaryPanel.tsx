@@ -74,7 +74,12 @@ export default function SummaryPanel({ summary, activeTag, onTagToggle }: Props)
         <p className="vs-muted vs-small">
           {activeTag
             ? "Штриховка — дни, когда лимит по тегу исчерпан коллегами."
-            : "Лимиты тегов, которых у вас нет, вас не ограничивают."}
+            : summary.tags.length > 0
+              ? "Здесь только ваши теги: "
+                + summary.tags.map((tag) => `«${tag.name}» — ${tag.source === "auto_org"
+                  ? "по подразделению" : "назначен администратором"}`).join(", ")
+                + ". Лимиты чужих тегов вас не ограничивают."
+              : "У вас нет тегов — лимиты одновременного отсутствия вас не ограничивают."}
         </p>
       </div>
     </>

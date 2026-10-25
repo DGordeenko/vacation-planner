@@ -49,6 +49,7 @@ export default function YearCalendar({
               if (conflict && !entry) classes.push("conflict");
               if (entry) {
                 classes.push(entry.status === "draft" ? "draft" : "booked");
+                if (entry.pending_exceptions?.length) classes.push("awaiting");
               }
               if (marking) classes.push("marking");
 
