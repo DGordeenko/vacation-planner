@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { tagsApi } from "../api";
 import type { EmployeeBrief, TagMember, TagRow } from "../types";
 
-/** Справочник тегов: лимиты одновременного отсутствия и ручное назначение. */
-export default function TagsAdmin({ onBack }: { onBack: () => void }) {
+/** Справочник тегов: лимиты одновременного отсутствия и ручное назначение.
+    Администратор меняет справочник и лимиты; руководитель назначает и снимает
+    дополнительные теги сотрудникам своей структуры. Сотрудник сюда не попадает. */
+export default function TagsAdmin({ onBack, canEdit }: { onBack: () => void; canEdit: boolean }) {
   const [tags, setTags] = useState<TagRow[]>([]);
   const [filter, setFilter] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -42,13 +44,17 @@ export default function TagsAdmin({ onBack }: { onBack: () => void }) {
     <div className="vs-admin">
       <div className="vs-top">
         <button className="vs-link" onClick={onBack}>← К моему графику</button>
-        <h1 className="vs-admin-title">Теги и лимиты</h1>
+        <h1 className="vs-admin-title">{canEdit ? "Теги и лимиты" : "Теги сотрудников"}</h1>
       </div>
 
       <p className="vs-muted vs-small vs-team-note">
-        Лимит — сколько сотрудников с тегом могут быть в отпуске одновременно.
-        Пусто — без ограничения. Теги подразделений создаются из кадровой
-        выгрузки; дополнительные назначаются вручную.
+        {canEdit
+          ? "Лимит — сколько сотрудников с тегом могут быть в отпуске одновременно. "
+            + "Пусто — без ограничения. Теги подразделений создаются из кадровой "
+            + "выгрузки; дополнительные назначаются вручную."
+          : "Назначьте сотрудникам своей структуры дополнительные теги — по ним "
+            + "проверяется лимит одновременного отсутствия. Лимиты задаёт "
+            + "администратор; теги подразделений приходят из оргструктуры."}
       </p>
 
       {error && (
@@ -63,7 +69,7 @@ export default function TagsAdmin({ onBack }: { onBack: () => void }) {
           Найти тег
           <input value={filter} onChange={(e) => setFilter(e.target.value)} />
         </label>
-        <div className="vs-new-tag">
+        {canEdit && <div className="vs-new-tag">
           <label className="vs-field vs-inline-field">
             Новый тег
             <input value={newName} placeholder="Например, Доступ в ЦОД"
@@ -75,7 +81,7 @@ export default function TagsAdmin({ onBack }: { onBack: () => void }) {
               onChange={(e) => setNewLimit(e.target.value)} />
           </label>
           <button className="vs-btn" onClick={create} disabled={!newName.trim()}>Создать</button>
-        </div>
+        </div>}
       </div>
 
       <div className="vs-card vs-tags-table">
@@ -83,7 +89,7 @@ export default function TagsAdmin({ onBack }: { onBack: () => void }) {
           <span>Тег</span><span>Тип</span><span>Сотрудников</span><span>Лимит</span>
         </div>
         {visible.map((tag) => (
-          <TagLine key={tag.id} tag={tag} open={openId === tag.id}
+          <TagLine key={tag.id} tag={tag} open={openId === tag.id} canEdit={canEdit}
             onToggle={() => setOpenId(openId === tag.id ? null : tag.id)}
             onChanged={reload} onError={setError} />
         ))}
@@ -100,9 +106,10 @@ function parseLimit(value: string): number | null {
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 
-function TagLine({ tag, open, onToggle, onChanged, onError }: {
+function TagLine({ tag, open, canEdit, onToggle, onChanged, onError }: {
   tag: TagRow;
   open: boolean;
+  canEdit: boolean;
   onToggle: () => void;
   onChanged: () => void;
   onError: (message: string) => void;
@@ -141,19 +148,24 @@ function TagLine({ tag, open, onToggle, onChanged, onError }: {
         </span>
         <span>{tag.members_count}</span>
         <span className="vs-limit-cell">
+          {!canEdit ? (
+            <span>{tag.max_simultaneous_absence ?? "—"}</span>
+          ) : <>
           <input value={limit} inputMode="numeric" placeholder="—" aria-label={`Лимит «${tag.name}»`}
             onChange={(e) => setLimit(e.target.value)} onBlur={saveLimit}
             onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
           {saved && <span className="vs-saved">сохранено</span>}
+          </>}
         </span>
       </div>
-      {open && <TagMembers tag={tag} onChanged={onChanged} onError={onError} />}
+      {open && <TagMembers tag={tag} canEdit={canEdit} onChanged={onChanged} onError={onError} />}
     </div>
   );
 }
 
-function TagMembers({ tag, onChanged, onError }: {
+function TagMembers({ tag, canEdit, onChanged, onError }: {
   tag: TagRow;
+  canEdit: boolean;
   onChanged: () => void;
   onError: (message: string) => void;
 }) {
@@ -219,6 +231,9 @@ function TagMembers({ tag, onChanged, onError }: {
           ))}
           {members.length === 0 && <li className="vs-muted vs-small">Пока никого.</li>}
         </ul>
+      )}
+      {!canEdit && (
+        <p className="vs-muted vs-small">Показаны сотрудники вашей структуры.</p>
       )}
       <label className="vs-field">
         Добавить сотрудника

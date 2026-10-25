@@ -2,8 +2,9 @@
 
 Права:
 - справочник и лимиты меняет администратор;
-- дополнительный тег назначают сам сотрудник себе, руководитель любого
-  уровня — сотрудникам своей структуры, администратор — любому;
+- дополнительный тег назначает руководитель любого уровня — сотрудникам
+  своей структуры, и администратор — любому. Сотрудник себе теги
+  не назначает (решение от 25.10.2026, меняет ФЗ 4.2.2);
 - тег по оргструктуре вручную не снимается: он выводится из структуры
   при загрузке кадровой выгрузки.
 """
@@ -60,7 +61,7 @@ class TagMemberSerializer(serializers.ModelSerializer):
 
 def can_assign(actor, employee):
     """Кто может назначить или снять дополнительный тег сотруднику."""
-    if actor.is_admin or actor.id == employee.id:
+    if actor.is_admin:
         return True
     return actor.managed_units.exists() and employee.id in actor.visible_employee_ids()
 
@@ -118,7 +119,7 @@ class TagViewSet(viewsets.ModelViewSet):
         tag = self.get_object()
         employee = get_object_or_404(Employee, id=request.data.get("employee_id"))
         if not can_assign(request.user, employee):
-            return Response({"detail": "Назначать теги можно себе и сотрудникам своей структуры"},
+            return Response({"detail": "Назначать теги может руководитель — сотрудникам своей структуры"},
                             status=status.HTTP_403_FORBIDDEN)
         link, created = EmployeeTag.objects.get_or_create(
             employee=employee, tag=tag,
@@ -131,7 +132,7 @@ class TagViewSet(viewsets.ModelViewSet):
         tag = self.get_object()
         employee = get_object_or_404(Employee, id=employee_id)
         if not can_assign(request.user, employee):
-            return Response({"detail": "Снимать теги можно себе и сотрудникам своей структуры"},
+            return Response({"detail": "Снимать теги может руководитель — сотрудникам своей структуры"},
                             status=status.HTTP_403_FORBIDDEN)
         link = get_object_or_404(EmployeeTag, employee=employee, tag=tag)
         if link.source == Tag.Source.AUTO_ORG:

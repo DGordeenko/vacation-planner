@@ -95,11 +95,27 @@ class TagApiTests(TestCase):
                                   {"employee_id": str(self.stranger.id)}, format="json")
         self.assertEqual(denied.status_code, 403)
 
-    def test_employee_assigns_to_self(self):
+    def test_employee_cannot_assign_even_to_self(self):
+        """Решение от 25.10.2026: теги назначают только руководители и администратор."""
         self.as_(self.stranger)
         response = self.client.post(f"/api/v1/tags/{self.tag.id}/assign/",
                                     {"employee_id": str(self.stranger.id)}, format="json")
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(EmployeeTag.objects.filter(employee=self.stranger, tag=self.tag).exists())
+
+    def test_employee_cannot_unassign_own_tag(self):
+        EmployeeTag.objects.create(employee=self.employee, tag=self.tag,
+                                   source=Tag.Source.MANUAL)
+        self.as_(self.employee)
+        response = self.client.delete(f"/api/v1/tags/{self.tag.id}/unassign/{self.employee.id}/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_manager_unassign_outside_structure_forbidden(self):
+        EmployeeTag.objects.create(employee=self.stranger, tag=self.tag,
+                                   source=Tag.Source.MANUAL)
+        self.as_(self.manager)
+        response = self.client.delete(f"/api/v1/tags/{self.tag.id}/unassign/{self.stranger.id}/")
+        self.assertEqual(response.status_code, 403)
 
     def test_org_unit_tag_cannot_be_unassigned(self):
         self.as_(self.admin)
