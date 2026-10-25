@@ -5,7 +5,9 @@
 а рабочий администратор — наткнуться на вымышленных сотрудников.
 """
 
+import os
 import subprocess
+import sys
 import tempfile
 from datetime import date
 from pathlib import Path
@@ -271,20 +273,29 @@ class LoaderTests(TestCase):
 
 class EntrypointTests(SimpleTestCase):
     """Загрузка демо при старте контейнера. Вместо python и gunicorn —
-    заглушки, которые только записывают, с чем их вызвали."""
+    заглушки, которые только записывают, с чем их вызвали. Заглушка python
+    завершается ошибкой, если в аргументах есть FAIL_ON."""
 
-    def run_entrypoint(self, **env):
+    def run_entrypoint(self, fail_on="", **env):
         script = Path(__file__).resolve().parent.parent / "entrypoint.sh"
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp) / "calls.log"
             for name in ("python", "gunicorn"):
                 stub = Path(tmp) / name
-                stub.write_text(f'#!/bin/sh\necho "{name} $*" >> "{log}"\n')
+                stub.write_text(
+                    "#!/bin/sh\n"
+                    f'echo "{name} $*" >> "{log}"\n'
+                    f'case "$*" in *"{fail_on or "<never>"}"*) exit 1 ;; esac\n')
                 stub.chmod(0o755)
-            subprocess.run(
-                ["sh", str(script)], check=True, capture_output=True,
+            result = subprocess.run(
+                ["sh", str(script)], capture_output=True, text=True,
                 env={"PATH": f"{tmp}:/usr/bin:/bin", **env})
+            self.stderr = result.stderr
+            self.returncode = result.returncode
             return log.read_text().splitlines()
+
+    def gunicorn_started(self, calls):
+        return any(call.startswith("gunicorn") for call in calls)
 
     def test_demo_loaded_before_gunicorn_when_enabled(self):
         calls = self.run_entrypoint(DEMO_MODE_ENABLED="True")
@@ -292,10 +303,67 @@ class EntrypointTests(SimpleTestCase):
         self.assertLess(calls.index("python manage.py load_demo"),
                         next(i for i, c in enumerate(calls) if c.startswith("gunicorn")))
 
-    def test_demo_skipped_when_disabled(self):
+    def test_demo_skipped_by_default(self):
+        """Без явного DEMO_MODE_ENABLED демо не трогается вовсе."""
         calls = self.run_entrypoint()
         self.assertFalse(any("demo" in call for call in calls))
+        self.assertTrue(self.gunicorn_started(calls))
 
     def test_demo_load_can_be_moved_to_job(self):
         calls = self.run_entrypoint(DEMO_MODE_ENABLED="1", DEMO_LOAD_ON_START="0")
         self.assertFalse(any("demo" in call for call in calls))
+
+    def test_failed_demo_migration_does_not_stop_start(self):
+        """Ровно сбой с Railway: миграция демо-базы падает, сервис стартует."""
+        calls = self.run_entrypoint(fail_on="--database=demo", DEMO_MODE_ENABLED="True")
+        self.assertTrue(self.gunicorn_started(calls))
+        self.assertNotIn("python manage.py load_demo", calls)
+        self.assertIn("демо-режим недоступен", self.stderr)
+
+    def test_failed_demo_load_does_not_stop_start(self):
+        calls = self.run_entrypoint(fail_on="load_demo", DEMO_MODE_ENABLED="True")
+        self.assertTrue(self.gunicorn_started(calls))
+        self.assertIn("демо-режим недоступен", self.stderr)
+
+    def test_failed_main_migration_still_stops_start(self):
+        """Рабочая база — не витрина: без неё сервис запускать нельзя."""
+        calls = self.run_entrypoint(fail_on="migrate --noinput", DEMO_MODE_ENABLED="True")
+        self.assertFalse(self.gunicorn_started(calls))
+        self.assertNotEqual(self.returncode, 0)
+
+
+class StartupResilienceTests(SimpleTestCase):
+    """Демо не должно мешать сборке образа и запуску рабочей системы.
+
+    manage.py check при сборке образа не должен оставлять файл демо-базы.
+
+    Причина сбоя на Railway: проверка выполнялась от root, Django 6.1
+    подключался к файловой демо-базе и создавал её. В образе оставался
+    пустой файл root, и пользователь app не мог в него писать.
+    """
+
+    def test_check_does_not_create_demo_database(self):
+        backend = Path(__file__).resolve().parent.parent
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {k: v for k, v in os.environ.items()
+                   if not k.startswith(("DEMO_", "DATABASE_URL"))}
+            env.update(TMPDIR=tmp, SECRET_KEY="build-only",
+                       DATABASE_URL=f"sqlite:///{tmp}/main.sqlite3")
+            subprocess.run([sys.executable, "manage.py", "check"], cwd=backend,
+                           env=env, check=True, capture_output=True)
+            self.assertFalse((Path(tmp) / "vacation-planner-demo.sqlite3").exists())
+
+    def test_startup_commands_ignore_unreachable_demo_database(self):
+        """Команды старта и расписания не падают, если демо-база недоступна:
+        Django 6.1 перед командой проверяет модели на всех базах."""
+        backend = Path(__file__).resolve().parent.parent
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {k: v for k, v in os.environ.items()
+                   if not k.startswith(("DEMO_", "DATABASE_URL", "ADMIN_"))}
+            env.update(SECRET_KEY="x", DATABASE_URL=f"sqlite:///{tmp}/main.sqlite3",
+                       DEMO_MODE_ENABLED="True",
+                       DEMO_DATABASE_URL=f"sqlite:///{tmp}/missing-dir/demo.sqlite3")
+            for command in (["migrate", "--noinput"], ["ensure_admin"], ["send_mail_queue"]):
+                result = subprocess.run([sys.executable, "manage.py", *command],
+                                        cwd=backend, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, f"{command}: {result.stderr[-500:]}")

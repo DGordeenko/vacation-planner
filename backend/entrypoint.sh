@@ -17,11 +17,15 @@ fi
 # Пароль не выводится: команда его не печатает, а set -x здесь не включён.
 python manage.py ensure_admin
 
-# Демо-режим (docs/15-demo-mode.md): отдельная база, данные загружаются
-# заново при каждом старте — так демо само сбрасывается после посетителей.
+# Демо-режим (docs/15-demo-mode.md): только при явном DEMO_MODE_ENABLED=True.
+# Отдельная база, данные загружаются заново при каждом старте — так демо
+# само сбрасывается после посетителей. В рабочую базу не пишет никогда.
 # Миграции демо-базы идут здесь же, а не по RUN_MIGRATIONS: по умолчанию
-# демо-база — SQLite внутри контейнера, и у каждой реплики она своя.
+# демо-база — SQLite во временном каталоге, у каждой реплики своя.
 # DEMO_LOAD_ON_START=0 — для общей демо-базы Postgres, которую готовит Job.
+#
+# Сбой демо не останавливает запуск: демо — витрина, а не часть рабочей
+# системы. Без загруженных данных кнопка демо на экране входа не появится.
 is_true() {
     case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
         1|true|yes) return 0 ;;
@@ -30,8 +34,12 @@ is_true() {
 }
 if is_true "${DEMO_MODE_ENABLED:-0}" && is_true "${DEMO_LOAD_ON_START:-1}"; then
     echo "Готовим демо-базу..."
-    python manage.py migrate --database=demo --noinput
-    python manage.py load_demo
+    if python manage.py migrate --database=demo --noinput && python manage.py load_demo; then
+        echo "Демо-режим готов."
+    else
+        echo "ВНИМАНИЕ: демо-база не подготовлена, демо-режим недоступен." \
+             "Рабочая система запускается. Причина — в сообщениях выше." >&2
+    fi
 fi
 
 exec gunicorn config.wsgi:application \

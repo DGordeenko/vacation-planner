@@ -5,6 +5,7 @@ from datetime import date
 
 from django.core.management.base import BaseCommand
 
+from config.commands import WorkingDatabaseChecks
 from company.models import AbsenceReason, CompanySettings, Holiday
 from employees.models import Employee, EmployeeTag, OrgUnit, Tag
 from schedule.models import ValidationRule
@@ -49,7 +50,7 @@ HOLIDAYS_2027 = [
 ]
 
 
-class Command(BaseCommand):
+class Command(WorkingDatabaseChecks, BaseCommand):
     help = "Наполняет базу демонстрационными данными"
 
     def handle(self, *args, **options):

@@ -7,11 +7,12 @@
 
 from django.core.management.base import BaseCommand
 
+from config.commands import WorkingDatabaseChecks
 from mailer.composing import mail_enabled
 from mailer.sending import send_digest, send_urgent
 
 
-class Command(BaseCommand):
+class Command(WorkingDatabaseChecks, BaseCommand):
     help = "Отправляет письма из очереди"
 
     def add_arguments(self, parser):
