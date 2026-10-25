@@ -29,6 +29,8 @@ export interface ScheduleEntry {
   extended_by_holiday_days: number;
   /** Нарушения черновика, которые ждут подтверждения руководителя. */
   pending_exceptions: Violation[];
+  /** Причина, по которой руководитель не подтвердил отпуск. */
+  rejection_comment: string;
 }
 
 /** Коллега, из-за отпуска которого исчерпан лимит по тегу. */

@@ -343,13 +343,19 @@ export default function App() {
               <ul className="vs-list">
                 {entries.map((entry) => (
                   <li className="vs-item" key={entry.id}>
-                    <span>{fmt(entry.date_from)} — {fmt(entry.date_to || entry.date_from)}</span>
+                    <span className="vs-item-dates">
+                      {fmt(entry.date_from)} — {fmt(entry.date_to || entry.date_from)}
+                    </span>
                     <span className="vs-item-days">{entry.vacation_days} дн.</span>
+                    {entry.status === "rejected" && (
+                      <span className="vs-item-flag rejected"
+                        title={entry.rejection_comment}>не подтверждён</span>
+                    )}
                     {entry.pending_exceptions.length > 0 && (
                       <span className="vs-item-flag" title={entry.pending_exceptions
                         .map((v) => v.name).join(", ")}>ждёт подтверждения</span>
                     )}
-                    {!locked && entry.status === "draft" && (
+                    {!locked && (entry.status === "draft" || entry.status === "rejected") && (
                       <button className="vs-x" onClick={() => remove(entry.id)}
                         aria-label="Удалить отпуск">✕</button>
                     )}
