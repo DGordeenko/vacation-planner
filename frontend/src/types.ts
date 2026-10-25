@@ -170,7 +170,29 @@ export interface AuthProvider {
   auto?: boolean;
 }
 
+export type DemoRoleCode = "employee" | "manager" | "admin";
+
+export interface DemoRole {
+  code: DemoRoleCode;
+  title: string;
+  description: string;
+  full_name: string;
+}
+
+export interface DemoMethods {
+  enabled: boolean;
+  roles: DemoRole[];
+}
+
+export interface DemoLogin {
+  token: string;
+  employee_id: string;
+  scheme: "Demo";
+  role: DemoRoleCode;
+}
+
 export interface AuthMethods {
   password_login: boolean;
   providers: AuthProvider[];
+  demo: DemoMethods;
 }
