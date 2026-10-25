@@ -66,8 +66,20 @@ class DecisionsTests(ApprovalBase):
             f"/api/v1/schedule-entries/{entry_id}/exception-rejection/",
             {"comment": "В эти даты релиз"}, format="json")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(ScheduleEntry.objects.get(id=entry_id).status,
-                         ScheduleEntry.Status.REJECTED)
+        entry = ScheduleEntry.objects.get(id=entry_id)
+        self.assertEqual(entry.status, ScheduleEntry.Status.REJECTED)
+        self.assertEqual(entry.rejection_comment, "В эти даты релиз")
+        # Сотрудник видит отказ и причину у самого отпуска и в ленте.
+        self.client.force_authenticate(self.employee)
+        mine = self.client.get(f"/api/v1/schedule-entries/{entry_id}/").json()
+        self.assertEqual((mine["status"], mine["rejection_comment"]),
+                         ("rejected", "В эти даты релиз"))
+        note = self.client.get("/api/v1/notifications/").json()["results"][0]
+        self.assertIn("не подтвердил отпуск 02.03.2027—04.03.2027: В эти даты релиз",
+                      note["message"])
+        # Отклонённый отпуск сотрудник может убрать из графика.
+        self.assertEqual(self.client.delete(f"/api/v1/schedule-entries/{entry_id}/").status_code, 204)
+        self.client.force_authenticate(self.chief)
         self.assertEqual(self.client.get("/api/v1/decisions/").json()["count"], 0)
 
     def test_stranger_cannot_reject(self):
