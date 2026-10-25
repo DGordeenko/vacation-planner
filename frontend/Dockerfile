@@ -15,8 +15,12 @@ RUN npm run build
 # --- Отдача ---------------------------------------------------------------
 FROM nginx:1.27-alpine AS runtime
 
+# NGINX_ENTRYPOINT_LOCAL_RESOLVERS: образ nginx при старте записывает
+# адреса DNS из /etc/resolv.conf в NGINX_LOCAL_RESOLVERS для директивы
+# resolver в nginx.conf. BACKEND_URL — без пути и завершающего «/».
 ENV PORT=8080 \
-    BACKEND_URL=http://backend:8000
+    BACKEND_URL=http://backend:8000 \
+    NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 
 COPY --from=builder /build/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/templates/default.conf.template
