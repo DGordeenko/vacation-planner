@@ -6,8 +6,8 @@
 */
 
 import type {
-  AnnualSummary, AuthMethods, Branding, CalendarImpact, DayType, DemoLogin, DemoRoleCode,
-  Holiday, HolidayRow,
+  AnnualSummary, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
+  DemoRoleCode, EmployeeBrief, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
   ValidationResult, YearSummary,
 } from "./types";
@@ -157,6 +157,66 @@ export const api = {
 
   markRead: (id: string) =>
     request<void>(`/notifications/${id}/mark-read/`, { method: "POST" }),
+};
+
+/** Экраны руководителя: решения и календарь команды. */
+export const managerApi = {
+  decisions: () => request<Decisions>("/decisions/"),
+
+  approveStep: (approvalId: string, stepId: string, comment: string) =>
+    request<unknown>(`/schedule-approvals/${approvalId}/steps/${stepId}/approve/`, {
+      method: "POST", body: JSON.stringify({ comment }),
+    }),
+
+  rejectStep: (approvalId: string, stepId: string, comment: string) =>
+    request<unknown>(`/schedule-approvals/${approvalId}/steps/${stepId}/reject/`, {
+      method: "POST", body: JSON.stringify({ comment }),
+    }),
+
+  /** Подтверждение исключения — по одному правилу за вызов. */
+  approveException: (entryId: string, rule_code: string, comment: string) =>
+    request<unknown>(`/schedule-entries/${entryId}/exception-approvals/`, {
+      method: "POST", body: JSON.stringify({ rule_code, comment }),
+    }),
+
+  rejectException: (entryId: string, comment: string) =>
+    request<unknown>(`/schedule-entries/${entryId}/exception-rejection/`, {
+      method: "POST", body: JSON.stringify({ comment }),
+    }),
+
+  teamCalendar: (date_from: string, date_to: string, tagId: string | null) =>
+    request<TeamCalendar>(`/team-calendar/?date_from=${date_from}&date_to=${date_to}`
+      + (tagId ? `&tag_id=${tagId}` : "")),
+};
+
+/** Справочник тегов и ручное назначение. */
+export const tagsApi = {
+  list: () => request<TagRow[]>("/tags/"),
+
+  create: (name: string, max_simultaneous_absence: number | null) =>
+    request<TagRow>("/tags/", {
+      method: "POST", body: JSON.stringify({ name, max_simultaneous_absence }),
+    }),
+
+  setLimit: (id: string, max_simultaneous_absence: number | null) =>
+    request<TagRow>(`/tags/${id}/`, {
+      method: "PATCH", body: JSON.stringify({ max_simultaneous_absence }),
+    }),
+
+  remove: (id: string) => request<void>(`/tags/${id}/`, { method: "DELETE" }),
+
+  members: (id: string) => request<TagMember[]>(`/tags/${id}/members/`),
+
+  assign: (id: string, employee_id: string) =>
+    request<TagMember>(`/tags/${id}/assign/`, {
+      method: "POST", body: JSON.stringify({ employee_id }),
+    }),
+
+  unassign: (id: string, employeeId: string) =>
+    request<void>(`/tags/${id}/unassign/${employeeId}/`, { method: "DELETE" }),
+
+  searchEmployees: (q: string) =>
+    request<EmployeeBrief[]>(`/employees/search/?q=${encodeURIComponent(q)}`),
 };
 
 /** Администрирование календаря праздников. */

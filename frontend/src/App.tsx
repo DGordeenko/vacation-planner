@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, ApiError, isDemo, persistToken, restoreToken } from "./api";
+import { api, ApiError, isDemo, managerApi, persistToken, restoreToken } from "./api";
 import { fmt } from "./dates";
 import Login from "./components/Login";
 import SummaryPanel from "./components/SummaryPanel";
 import YearCalendar from "./components/YearCalendar";
 import { ExistingEntryPanel, SelectionPanel } from "./components/EntryPanel";
 import HolidayAdmin from "./components/HolidayAdmin";
+import Decisions from "./components/Decisions";
+import TeamCalendar from "./components/TeamCalendar";
+import TagsAdmin from "./components/TagsAdmin";
 import type {
   AnnualSummary, Branding, Holiday, Me, Notification,
   ScheduleEntry, ValidationResult,
@@ -42,7 +45,9 @@ export default function App() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"schedule" | "holidays">("schedule");
+  const [view, setView] = useState<
+    "schedule" | "holidays" | "decisions" | "team" | "tags">("schedule");
+  const [decisionsCount, setDecisionsCount] = useState(0);
 
   const reload = useCallback(async () => {
     if (!authorized) return;
@@ -61,6 +66,11 @@ export default function App() {
       setSummary(sum);
       setEntries(list.results);
       setNotifications(inbox.results);
+      // Счётчик «Требует моего решения» — в шапке, чтобы руководитель видел
+      // задачи, не открывая экран (UX 2.4).
+      if (profile.is_manager || profile.is_admin) {
+        managerApi.decisions().then((d) => setDecisionsCount(d.count)).catch(() => undefined);
+      }
       setError(null);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -233,6 +243,7 @@ export default function App() {
     setError(null);
     setSaveError(null);
     setNotice(null);
+    setDecisionsCount(0);
     setView("schedule");
   }
 
@@ -271,11 +282,29 @@ export default function App() {
         </div>
         <div className="vs-right">
           {unread > 0 && <span className="vs-badge">{unread}</span>}
-          {me.is_admin && (
-            <button className="vs-link" onClick={() => setView("holidays")}>
-              Календарь праздников
-            </button>
-          )}
+          <nav className="vs-nav" aria-label="Разделы">
+            <button className="vs-nav-item" aria-current={view === "schedule"}
+              onClick={() => setView("schedule")}>Мой график</button>
+            {(me.is_manager || me.is_admin) && (
+              <>
+                <button className="vs-nav-item" aria-current={view === "decisions"}
+                  onClick={() => setView("decisions")}>
+                  Требует решения
+                  {decisionsCount > 0 && <span className="vs-badge">{decisionsCount}</span>}
+                </button>
+                <button className="vs-nav-item" aria-current={view === "team"}
+                  onClick={() => setView("team")}>Команда</button>
+              </>
+            )}
+            {me.is_admin && (
+              <>
+                <button className="vs-nav-item" aria-current={view === "tags"}
+                  onClick={() => setView("tags")}>Теги</button>
+                <button className="vs-nav-item" aria-current={view === "holidays"}
+                  onClick={() => setView("holidays")}>Праздники</button>
+              </>
+            )}
+          </nav>
           <span className="vs-muted vs-small">{me.full_name}</span>
           <button className="vs-link" onClick={signOut}>Выйти</button>
         </div>
@@ -290,6 +319,13 @@ export default function App() {
 
       {view === "holidays" ? (
         <HolidayAdmin onBack={() => { setView("schedule"); void reload(); }} />
+      ) : view === "decisions" ? (
+        <Decisions onBack={() => { setView("schedule"); void reload(); }}
+          onChanged={() => void reload()} />
+      ) : view === "team" ? (
+        <TeamCalendar year={YEAR} onBack={() => setView("schedule")} />
+      ) : view === "tags" ? (
+        <TagsAdmin onBack={() => { setView("schedule"); void reload(); }} />
       ) : (
       <div className="vs-shell">
         <aside className="vs-rail">
