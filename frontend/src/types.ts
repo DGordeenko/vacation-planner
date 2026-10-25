@@ -13,7 +13,7 @@ export interface Me {
   tags: string[];
 }
 
-export type RecordType = "vacation" | "absence" | "rvd" | "overtime";
+export type RecordType = "vacation" | "absence" | "rvd" | "overtime" | "day_off";
 export type EntryStatus =
   | "draft" | "pending_approval" | "approved" | "rejected" | "cancelled";
 
@@ -205,4 +205,93 @@ export interface AuthMethods {
   password_login: boolean;
   providers: AuthProvider[];
   demo: DemoMethods;
+}
+
+/* --- Теги и лимиты --- */
+
+export interface TagRow {
+  id: string;
+  name: string;
+  max_simultaneous_absence: number | null;
+  members_count: number;
+  manual_count: number;
+  is_org_unit_tag: boolean;
+}
+
+export interface TagMember {
+  employee_id: string;
+  full_name: string;
+  employee_number: string;
+  org_unit: string | null;
+  source: "auto_org" | "manual";
+  assigned_by: string | null;
+  assigned_at: string;
+}
+
+export interface EmployeeBrief {
+  id: string;
+  full_name: string;
+  employee_number: string;
+  org_unit: string | null;
+}
+
+/* --- Решения руководителя и календарь команды --- */
+
+export interface TeamEntry {
+  id: string;
+  record_type: RecordType;
+  date_from: string;
+  date_to: string;
+  status: EntryStatus;
+  vacation_days: number | null;
+}
+
+export interface ApprovalStepRow {
+  id: string;
+  order: number;
+  level: string;
+  level_display: string;
+  approver: string;
+  approver_name: string;
+  status: string;
+  comment: string;
+  decided_at: string | null;
+}
+
+export interface ApprovalDecision {
+  approval_id: string;
+  step_id: string;
+  employee_id: string;
+  employee_name: string;
+  year: number;
+  scope: "initial" | "amendment";
+  submitted_at: string;
+  planned_days: number;
+  entries: TeamEntry[];
+  steps: ApprovalStepRow[];
+}
+
+export interface ExceptionDecision extends TeamEntry {
+  employee_id: string;
+  employee_name: string;
+  violations: Violation[];
+}
+
+export interface Decisions {
+  count: number;
+  approvals: ApprovalDecision[];
+  exceptions: ExceptionDecision[];
+}
+
+export interface TeamCalendar {
+  date_from: string;
+  date_to: string;
+  tag: { id: string; name: string; limit: number | null } | null;
+  limit_reached: { date: string; count: number }[];
+  rows: {
+    employee_id: string;
+    full_name: string;
+    org_unit: string | null;
+    entries: TeamEntry[];
+  }[];
 }
