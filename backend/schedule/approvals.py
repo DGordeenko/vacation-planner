@@ -183,6 +183,31 @@ def _raise_if_awaiting_exception(employee, year):
         "Отправить график можно после его решения")
 
 
+@transaction.atomic
+def reject_exception(entry, approver, comment):
+    """Отказ в исключении: отпуск отклоняется, сотрудник получает причину.
+
+    Отпуск переводится в «Отклонён», а не удаляется: сотрудник видит,
+    какие даты не согласованы и почему, а запрос уходит из списка
+    решений руководителя.
+    """
+    if not comment or not comment.strip():
+        raise ApprovalError("Комментарий обязателен при отказе")
+    if entry.status != ScheduleEntry.Status.DRAFT:
+        raise ApprovalError("Решение по этому отпуску уже принято")
+    manager = entry.employee.manager
+    if not (approver.is_admin or (manager and approver.id == manager.id)):
+        raise ApprovalError(
+            "Отказать в исключении может непосредственный руководитель или администратор")
+    entry.status = ScheduleEntry.Status.REJECTED
+    entry.save(update_fields=["status", "updated_at"])
+    notify(entry.employee, Notification.NotificationType.APPROVAL_DECIDED,
+           f"{approver.full_name} не подтвердил отпуск "
+           f"{entry.date_from:%d.%m.%Y}—{entry.effective_date_to:%d.%m.%Y}: "
+           f"{comment.strip()}", entry)
+    return entry
+
+
 def unresolved_violations(entry):
     """Нарушения, по которым ещё нет подтверждения руководителя."""
     result = calculations.validate_entry(

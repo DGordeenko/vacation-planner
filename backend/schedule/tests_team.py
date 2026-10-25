@@ -1,0 +1,135 @@
+"""«Требует моего решения» и календарь команды."""
+
+from datetime import date
+
+from employees.models import Employee, EmployeeTag, Tag
+from schedule import approvals
+from schedule.models import ScheduleApproval, ScheduleEntry
+from schedule.tests_approvals import ApprovalBase
+
+
+class DecisionsTests(ApprovalBase):
+    def test_submitted_plan_awaits_manager(self):
+        self.full_year_plan()
+        approvals.submit_year(self.employee, 2027, self.employee)
+        self.client.force_authenticate(self.chief)
+        body = self.client.get("/api/v1/decisions/").json()
+        self.assertEqual(body["count"], 1)
+        item = body["approvals"][0]
+        self.assertEqual((item["employee_name"], item["planned_days"]), ("Иван Иванов", 28))
+        self.assertEqual(len(item["entries"]), 2)
+
+    def test_next_level_sees_plan_only_after_previous_decision(self):
+        CompanySettings = __import__("company.models", fromlist=["x"]).CompanySettings
+        CompanySettings.objects.update(approval_levels=4)
+        group_lead = Employee.objects.create_user(
+            email="lead@x.ru", employee_number="910", full_name="Руководитель группы",
+            hire_date=date(2016, 1, 1), org_unit=self.group)
+        self.group.manager = group_lead
+        self.group.save()
+        self.full_year_plan()
+        approval = approvals.submit_year(self.employee, 2027, self.employee)
+        self.client.force_authenticate(self.chief)
+        self.assertEqual(self.client.get("/api/v1/decisions/").json()["count"], 0)
+
+        step = approval.steps.get(order=1)
+        approvals.decide_step(step, group_lead, True)
+        self.assertEqual(self.client.get("/api/v1/decisions/").json()["count"], 1)
+
+    def test_approve_from_list_closes_item(self):
+        self.full_year_plan()
+        approvals.submit_year(self.employee, 2027, self.employee)
+        self.client.force_authenticate(self.chief)
+        item = self.client.get("/api/v1/decisions/").json()["approvals"][0]
+        response = self.client.post(
+            f"/api/v1/schedule-approvals/{item['approval_id']}/steps/{item['step_id']}/approve/",
+            {"comment": ""}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/decisions/").json()["count"], 0)
+        self.assertEqual(ScheduleApproval.objects.get().status, ScheduleApproval.Status.APPROVED)
+
+    def test_exception_request_listed_and_rejected(self):
+        self.client.force_authenticate(self.employee)
+        entry_id = self.client.post("/api/v1/schedule-entries/", {
+            "date_from": "2027-03-02", "date_to": "2027-03-04", "record_type": "vacation",
+        }, format="json").json()["id"]
+
+        self.client.force_authenticate(self.chief)
+        exceptions = self.client.get("/api/v1/decisions/").json()["exceptions"]
+        self.assertEqual([e["id"] for e in exceptions], [entry_id])
+        self.assertEqual(exceptions[0]["violations"][0]["code"], "no_weekend_captured")
+
+        no_comment = self.client.post(
+            f"/api/v1/schedule-entries/{entry_id}/exception-rejection/", {}, format="json")
+        self.assertEqual(no_comment.status_code, 409)
+        response = self.client.post(
+            f"/api/v1/schedule-entries/{entry_id}/exception-rejection/",
+            {"comment": "В эти даты релиз"}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ScheduleEntry.objects.get(id=entry_id).status,
+                         ScheduleEntry.Status.REJECTED)
+        self.assertEqual(self.client.get("/api/v1/decisions/").json()["count"], 0)
+
+    def test_stranger_cannot_reject(self):
+        self.client.force_authenticate(self.employee)
+        entry_id = self.client.post("/api/v1/schedule-entries/", {
+            "date_from": "2027-03-02", "date_to": "2027-03-04", "record_type": "vacation",
+        }, format="json").json()["id"]
+        response = self.client.post(
+            f"/api/v1/schedule-entries/{entry_id}/exception-rejection/",
+            {"comment": "Нет"}, format="json")
+        self.assertEqual(response.status_code, 409)
+
+    def test_confirmed_exception_leaves_list(self):
+        self.client.force_authenticate(self.employee)
+        entry_id = self.client.post("/api/v1/schedule-entries/", {
+            "date_from": "2027-03-02", "date_to": "2027-03-04", "record_type": "vacation",
+        }, format="json").json()["id"]
+        self.client.force_authenticate(self.chief)
+        self.client.post(f"/api/v1/schedule-entries/{entry_id}/exception-approvals/",
+                         {"rule_code": "no_weekend_captured", "comment": "Ок"}, format="json")
+        self.assertEqual(self.client.get("/api/v1/decisions/").json()["count"], 0)
+
+
+class TeamCalendarTests(ApprovalBase):
+    def setUp(self):
+        super().setUp()
+        self.tag = Tag.objects.create(name="Дежурство", max_simultaneous_absence=1)
+        self.colleague = Employee.objects.create_user(
+            email="col@x.ru", employee_number="905", full_name="Анна Коллегова",
+            hire_date=date(2018, 1, 1), org_unit=self.group)
+        for person in (self.employee, self.colleague):
+            EmployeeTag.objects.create(employee=person, tag=self.tag, source=Tag.Source.MANUAL)
+
+    def get(self, who, **params):
+        self.client.force_authenticate(who)
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        return self.client.get(f"/api/v1/team-calendar/?{query}")
+
+    def test_employee_has_no_access(self):
+        self.assertEqual(self.get(self.employee).status_code, 403)
+
+    def test_rows_and_entries_for_period(self):
+        self.add_vacation(date(2027, 7, 5), date(2027, 7, 18),
+                          status=ScheduleEntry.Status.APPROVED)
+        body = self.get(self.chief, date_from="2027-07-01", date_to="2027-07-31").json()
+        rows = {r["full_name"]: r for r in body["rows"]}
+        self.assertIn("Анна Коллегова", rows)
+        self.assertEqual(rows["Иван Иванов"]["entries"][0]["date_from"], "2027-07-05")
+
+    def test_limit_reached_days_by_tag(self):
+        self.add_vacation(date(2027, 7, 5), date(2027, 7, 7),
+                          status=ScheduleEntry.Status.APPROVED)
+        ScheduleEntry.objects.create(  # черновик места не занимает
+            employee=self.colleague, created_by=self.colleague,
+            record_type=ScheduleEntry.RecordType.VACATION,
+            date_from=date(2027, 7, 20), date_to=date(2027, 7, 21))
+        body = self.get(self.chief, date_from="2027-07-01", date_to="2027-07-31",
+                        tag_id=self.tag.id).json()
+        self.assertEqual([d["date"] for d in body["limit_reached"]],
+                         ["2027-07-05", "2027-07-06", "2027-07-07"])
+        self.assertEqual(body["tag"]["limit"], 1)
+
+    def test_period_longer_than_quarter_rejected(self):
+        response = self.get(self.chief, date_from="2027-01-01", date_to="2027-12-31")
+        self.assertEqual(response.status_code, 400)

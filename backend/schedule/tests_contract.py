@@ -172,3 +172,76 @@ class DemoContractTests(TestCase):
         body = self.client.post("/api/v1/auth/demo-login/", {"role": "manager"},
                                 format="json").json()
         self.assertEqual(DEMO_LOGIN_FIELDS, set(body))
+
+
+# types.ts: Decisions, ApprovalDecision, ExceptionDecision, TeamEntry
+DECISIONS_FIELDS = {"count", "approvals", "exceptions"}
+APPROVAL_DECISION_FIELDS = {"approval_id", "step_id", "employee_id", "employee_name", "year",
+                            "scope", "submitted_at", "planned_days", "entries", "steps"}
+TEAM_ENTRY_FIELDS = {"id", "record_type", "date_from", "date_to", "status", "vacation_days"}
+EXCEPTION_DECISION_FIELDS = TEAM_ENTRY_FIELDS | {"employee_id", "employee_name", "violations"}
+APPROVAL_STEP_FIELDS = {"id", "order", "level", "level_display", "approver", "approver_name",
+                        "status", "comment", "decided_at"}
+# types.ts: TeamCalendar, TagRow, TagMember, EmployeeBrief
+TEAM_CALENDAR_FIELDS = {"date_from", "date_to", "tag", "limit_reached", "rows"}
+TEAM_ROW_FIELDS = {"employee_id", "full_name", "org_unit", "entries"}
+TAG_FIELDS = {"id", "name", "max_simultaneous_absence", "members_count", "manual_count",
+              "is_org_unit_tag"}
+TAG_MEMBER_FIELDS = {"employee_id", "full_name", "employee_number", "org_unit", "source",
+                     "assigned_by", "assigned_at"}
+EMPLOYEE_BRIEF_FIELDS = {"id", "full_name", "employee_number", "org_unit"}
+
+
+class ManagerScreensContractTests(TestCase):
+    def setUp(self):
+        from schedule import approvals
+        CompanySettings.get_solo()
+        seed_rules()
+        self.client = APIClient()
+        unit = OrgUnit.objects.create(name="Отдел М", unit_type=OrgUnit.UnitType.DEPARTMENT)
+        self.chief = Employee.objects.create_user(
+            email="m@m.ru", employee_number="700", full_name="Руководитель",
+            hire_date=date(2015, 1, 1), org_unit=unit)
+        unit.manager = self.chief
+        unit.save()
+        self.employee = Employee.objects.create_user(
+            email="e@m.ru", employee_number="701", full_name="Сотрудник",
+            hire_date=date(2018, 1, 1), org_unit=unit)
+        self.tag = Tag.objects.create(name="Дежурство", max_simultaneous_absence=1)
+        EmployeeTag.objects.create(employee=self.employee, tag=self.tag,
+                                   source=Tag.Source.MANUAL)
+        for start, end in [(date(2027, 7, 5), date(2027, 7, 18)),
+                           (date(2027, 9, 6), date(2027, 9, 19))]:
+            ScheduleEntry.objects.create(
+                employee=self.employee, created_by=self.employee,
+                record_type=ScheduleEntry.RecordType.VACATION, date_from=start, date_to=end)
+        approvals.submit_year(self.employee, 2027, self.employee)
+        self.client.force_authenticate(self.employee)
+        self.client.post("/api/v1/schedule-entries/", {
+            "date_from": "2027-03-02", "date_to": "2027-03-04", "record_type": "vacation"},
+            format="json")
+        self.client.force_authenticate(self.chief)
+
+    def test_decisions_contract(self):
+        body = self.client.get("/api/v1/decisions/").json()
+        self.assertEqual(DECISIONS_FIELDS, set(body))
+        self.assertEqual(APPROVAL_DECISION_FIELDS, set(body["approvals"][0]))
+        self.assertEqual(TEAM_ENTRY_FIELDS, set(body["approvals"][0]["entries"][0]))
+        self.assertEqual(APPROVAL_STEP_FIELDS, set(body["approvals"][0]["steps"][0]))
+        self.assertEqual(EXCEPTION_DECISION_FIELDS, set(body["exceptions"][0]))
+
+    def test_team_calendar_contract(self):
+        body = self.client.get(
+            f"/api/v1/team-calendar/?date_from=2027-07-01&date_to=2027-07-31"
+            f"&tag_id={self.tag.id}").json()
+        self.assertEqual(TEAM_CALENDAR_FIELDS, set(body))
+        self.assertEqual({"id", "name", "limit"}, set(body["tag"]))
+        self.assertEqual({"date", "count"}, set(body["limit_reached"][0]))
+        self.assertEqual(TEAM_ROW_FIELDS, set(body["rows"][0]))
+
+    def test_tags_contract(self):
+        self.assertEqual(TAG_FIELDS, set(self.client.get("/api/v1/tags/").json()[0]))
+        self.assertEqual(TAG_MEMBER_FIELDS, set(
+            self.client.get(f"/api/v1/tags/{self.tag.id}/members/").json()[0]))
+        self.assertEqual(EMPLOYEE_BRIEF_FIELDS, set(
+            self.client.get("/api/v1/employees/search/?q=Сотр").json()[0]))

@@ -4,6 +4,8 @@ from rest_framework.routers import DefaultRouter
 
 from config.health import HealthView
 from demo.views import DemoLoginView
+from employees.tags import EmployeeSearchView, TagViewSet
+from schedule.team import DecisionsView, ExceptionRejectView, TeamCalendarView
 
 from audit.views import AuditLogViewSet
 from company.views import HolidayAdminViewSet
@@ -46,6 +48,7 @@ router.register("admin/rvd", RvdAdminViewSet, basename="admin-rvd")
 router.register("day-offs", DayOffViewSet, basename="day-off")
 router.register("absences", AbsenceViewSet, basename="absence")
 router.register("absence-reasons", AbsenceReasonViewSet, basename="absence-reason")
+router.register("tags", TagViewSet, basename="tag")
 router.register("schedule-approvals", ScheduleApprovalViewSet, basename="schedule-approval")
 
 urlpatterns = [
@@ -59,6 +62,7 @@ urlpatterns = [
     path("api/v1/auth/demo-login/", DemoLoginView.as_view()),
     path("api/v1/auth/me/", AuthMeView.as_view()),
     path("api/v1/auth/accept-invitation/", InvitationAcceptView.as_view()),
+    path("api/v1/employees/search/", EmployeeSearchView.as_view()),
     path("api/v1/employees/<uuid:employee_id>/balance/", BalanceView.as_view()),
     path("api/v1/employees/<uuid:employee_id>/time-off-balance/",
          TimeOffBalanceView.as_view()),
@@ -71,6 +75,10 @@ urlpatterns = [
     path("api/v1/employees/<uuid:employee_id>/amendments/", AmendmentView.as_view()),
     path("api/v1/amendments/<uuid:approval_id>/<str:action_name>/",
          AmendmentActionView.as_view()),
+    path("api/v1/decisions/", DecisionsView.as_view()),
+    path("api/v1/team-calendar/", TeamCalendarView.as_view()),
+    path("api/v1/schedule-entries/<uuid:entry_id>/exception-rejection/",
+         ExceptionRejectView.as_view()),
     path("api/v1/schedule-entries/<uuid:entry_id>/exception-approvals/",
          EntryExceptionView.as_view()),
     path("api/v1/", include(router.urls)),
