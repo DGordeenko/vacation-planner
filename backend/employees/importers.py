@@ -301,7 +301,9 @@ def _apply(parsed, report):
             VacationLedger.objects.update_or_create(
                 employee=employee,
                 reason=VacationLedger.Reason.INITIAL_MIGRATION,
-                defaults={"entry_date": date(date.today().year, 1, 1),
+                # Остаток задаётся на дату загрузки (ФЗ, п. 4.2.1): с этого
+                # дня начисление продолжается, см. calculations.accrual_start.
+                defaults={"entry_date": date.today(),
                           "days_delta": item["balance"]})
 
     return report

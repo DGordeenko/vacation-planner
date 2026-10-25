@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from company.models import CompanySettings, Holiday
 from employees.models import Employee, EmployeeTag, OrgUnit, Tag
 from schedule import calculations
-from schedule.models import ScheduleEntry, ValidationRule
+from schedule.models import ScheduleEntry, ValidationRule, VacationLedger
 
 
 def seed_rules():
@@ -71,6 +71,73 @@ class AccrualTests(TestCase):
             status=ScheduleEntry.Status.PENDING_APPROVAL)
         after = calculations.balance_on(employee, date(2026, 12, 31))
         self.assertEqual(before - after, Decimal("10.00"))
+
+
+class InitialBalanceTests(TestCase):
+    """B4 — начальный остаток из кадровой выгрузки.
+
+    Остаток на дату загрузки уже включает всё начисленное и использованное
+    до неё, поэтому начисление за стаж до этой даты повторно не прибавляется.
+    """
+
+    def setUp(self):
+        CompanySettings.get_solo()
+        self.employee = Employee.objects.create_user(
+            email="old@x.ru", employee_number="010", full_name="Старожил",
+            hire_date=date(2015, 4, 1))
+
+    def _migrate(self, on, days):
+        VacationLedger.objects.create(
+            employee=self.employee, entry_date=on, days_delta=Decimal(days),
+            reason=VacationLedger.Reason.INITIAL_MIGRATION)
+
+    def test_b4_balance_on_migration_date_equals_initial(self):
+        """В день загрузки баланс равен остатку из выгрузки, а не стажу."""
+        self._migrate(date(2026, 10, 31), "12.00")
+        balance = calculations.balance_on(self.employee, date(2026, 10, 31))
+        self.assertEqual(balance, Decimal("12.00"))
+
+    def test_b4_accrual_continues_after_migration(self):
+        """После загрузки начисление продолжается: два полных месяца — 4.66."""
+        self._migrate(date(2026, 10, 31), "12.00")
+        balance = calculations.balance_on(self.employee, date(2026, 12, 31))
+        self.assertEqual(balance, Decimal("16.66"))
+
+    def test_b4_migration_mid_month_accrues_remainder(self):
+        """Загрузка 15 октября: за 16–31 октября начисляется 2.33 × 16/31."""
+        self._migrate(date(2026, 10, 15), "12.00")
+        balance = calculations.balance_on(self.employee, date(2026, 10, 31))
+        self.assertEqual(balance, Decimal("13.20"))
+
+    def test_b4_planned_vacation_after_migration_is_spent(self):
+        self._migrate(date(2026, 10, 31), "12.00")
+        ScheduleEntry.objects.create(
+            employee=self.employee, created_by=self.employee,
+            record_type=ScheduleEntry.RecordType.VACATION,
+            date_from=date(2026, 11, 9), date_to=date(2026, 11, 13),
+            status=ScheduleEntry.Status.APPROVED)
+        balance = calculations.balance_on(self.employee, date(2026, 12, 31))
+        self.assertEqual(balance, Decimal("11.66"))
+
+    def test_without_initial_balance_accrues_from_hire_date(self):
+        """Без остатка в выгрузке поведение прежнее — начисление со дня приёма."""
+        employee = Employee.objects.create_user(
+            email="new@x.ru", employee_number="011", full_name="Новичок",
+            hire_date=date(2026, 1, 1))
+        balance = calculations.balance_on(employee, date(2026, 6, 30))
+        self.assertEqual(balance, Decimal("13.98"))
+
+    def test_migration_before_hire_date_does_not_accrue_before_hire(self):
+        """Дата остатка раньше приёма (ошибка выгрузки) — начисление с приёма."""
+        employee = Employee.objects.create_user(
+            email="late@x.ru", employee_number="012", full_name="Поздний",
+            hire_date=date(2026, 3, 1))
+        VacationLedger.objects.create(
+            employee=employee, entry_date=date(2026, 1, 1),
+            days_delta=Decimal("0.00"),
+            reason=VacationLedger.Reason.INITIAL_MIGRATION)
+        balance = calculations.balance_on(employee, date(2026, 3, 31))
+        self.assertEqual(balance, Decimal("2.33"))
 
 
 class VacationDaysTests(TestCase):
