@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { managerApi, tagsApi } from "../api";
 import { fmt, iso, MONTHS } from "../dates";
-import type { TagRow, TeamCalendar as TeamCalendarData, TeamEntry } from "../types";
+import type {
+  TagRow, TeamCalendar as TeamCalendarData, TeamCalendarEntry, TeamScope,
+} from "../types";
+import TeamEntryCard from "./TeamEntryCard";
 
 const STATUS_LABEL: Record<string, string> = {
   approved: "утверждён",
@@ -10,7 +13,9 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /** Сводный календарь команды (UX 2.3): строки — сотрудники, столбцы — дни месяца.
-    Дни, где лимит по тегу исчерпан, приходят с сервера — клиент их не считает. */
+    Дни, где лимит по тегу исчерпан, приходят с сервера — клиент их не считает.
+    По умолчанию — своя структура; график всех подразделений руководитель
+    включает сам, кого и что показать в этом режиме, решает сервер. */
 export default function TeamCalendar({ year, onBack }: { year: number; onBack: () => void }) {
   const [month, setMonth] = useState(0);
   const [tags, setTags] = useState<TagRow[]>([]);
@@ -18,6 +23,8 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
   const [onlyAbsent, setOnlyAbsent] = useState(false);
   const [data, setData] = useState<TeamCalendarData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scope, setScope] = useState<TeamScope>("mine");
+  const [openEntry, setOpenEntry] = useState<string | null>(null);
 
   const days = useMemo(() => {
     const total = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
@@ -32,12 +39,13 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
 
   const reload = useCallback(async () => {
     try {
-      setData(await managerApi.teamCalendar(iso(days[0]), iso(days[days.length - 1]), tagId));
+      setData(await managerApi.teamCalendar(
+        iso(days[0]), iso(days[days.length - 1]), tagId, scope));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить календарь");
     }
-  }, [days, tagId]);
+  }, [days, tagId, scope]);
 
   useEffect(() => { void reload(); }, [reload]);
 
@@ -52,8 +60,20 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
   const limited = tags.filter((t) => t.max_simultaneous_absence !== null);
   const others = tags.filter((t) => t.max_simultaneous_absence === null);
 
-  function entryAt(entries: TeamEntry[], key: string) {
+  function entryAt(entries: TeamCalendarEntry[], key: string) {
     return entries.find((e) => key >= e.date_from && key <= e.date_to);
+  }
+
+  function hint(name: string, entry: TeamCalendarEntry) {
+    const what = entry.record_type === "day_off" ? "отгул" : "отпуск";
+    let text = `${name}: ${what} ${fmt(entry.date_from)} — ${fmt(entry.date_to)}, `
+      + (STATUS_LABEL[entry.status] ?? entry.status);
+    if (entry.waiting_for) {
+      text += entry.status === "draft"
+        ? `, ждёт подтверждения исключения: ${entry.waiting_for}`
+        : `, ждёт решения: ${entry.waiting_for}`;
+    }
+    return `${text}. Нажмите, чтобы открыть`;
   }
 
   return (
@@ -62,6 +82,15 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
         <button className="vs-link" onClick={onBack}>← К моему графику</button>
         <h1 className="vs-admin-title">Календарь команды</h1>
       </div>
+
+      {data?.can_view_all && (
+        <div className="vs-seg" role="group" aria-label="Чей график показать">
+          <button className={scope === "mine" ? "active" : ""} aria-pressed={scope === "mine"}
+            onClick={() => setScope("mine")}>Моя структура</button>
+          <button className={scope === "all" ? "active" : ""} aria-pressed={scope === "all"}
+            onClick={() => setScope("all")}>Все подразделения</button>
+        </div>
+      )}
 
       <div className="vs-team-controls">
         <div className="vs-month-switch">
@@ -97,6 +126,13 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
       </div>
 
       {error && <div className="vs-error vs-error-inline">{error}</div>}
+
+      {data?.scope === "all" && data.can_view_all && (
+        <p className="vs-muted vs-small vs-team-note">
+          Показан планируемый график всех подразделений. По чужим подразделениям
+          видны отпуска на согласовании и утверждённые — черновики остаются у сотрудников.
+        </p>
+      )}
 
       {data?.tag && (
         <p className="vs-muted vs-small vs-team-note">
@@ -144,10 +180,18 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
                     ? (entry.record_type === "day_off" ? "dayoff" : entry.status) : "";
                   return (
                     <td key={key}
-                      className={`${weekend ? "weekend" : ""} ${full ? "full" : ""} ${kind}`}
-                      title={entry ? `${row.full_name}: ${entry.record_type === "day_off"
-                        ? "отгул" : "отпуск"} ${fmt(entry.date_from)} — ${fmt(entry.date_to)}, `
-                        + (STATUS_LABEL[entry.status] ?? entry.status) : undefined} />
+                      className={`${weekend ? "weekend" : ""} ${full ? "full" : ""} ${kind}`
+                        + (entry ? " clickable" : "")}
+                      title={entry ? hint(row.full_name, entry) : undefined}
+                      onClick={entry ? () => setOpenEntry(entry.id) : undefined}
+                      // В порядок табуляции попадает только первый день отпуска в месяце.
+                      tabIndex={entry && (key === entry.date_from || d.getUTCDate() === 1)
+                        ? 0 : undefined}
+                      onKeyDown={entry ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault(); setOpenEntry(entry.id);
+                        }
+                      } : undefined} />
                   );
                 })}
               </tr>
@@ -168,6 +212,8 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
         <span><i className="vs-legend dayoff" />отгул</span>
         {data?.tag?.limit != null && <span><i className="vs-legend full" />лимит исчерпан</span>}
       </div>
+
+      {openEntry && <TeamEntryCard id={openEntry} onClose={() => setOpenEntry(null)} />}
     </div>
   );
 }

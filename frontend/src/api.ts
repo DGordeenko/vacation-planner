@@ -8,6 +8,7 @@
 import type {
   AnnualSummary, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
   DemoRoleCode, EmployeeBrief, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
+  TeamEntryDetail, TeamScope,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
   ValidationResult, YearSummary,
 } from "./types";
@@ -184,9 +185,11 @@ export const managerApi = {
       method: "POST", body: JSON.stringify({ comment }),
     }),
 
-  teamCalendar: (date_from: string, date_to: string, tagId: string | null) =>
+  teamCalendar: (date_from: string, date_to: string, tagId: string | null,
+    scope: TeamScope = "mine") =>
     request<TeamCalendar>(`/team-calendar/?date_from=${date_from}&date_to=${date_to}`
-      + (tagId ? `&tag_id=${tagId}` : "")),
+      + (tagId ? `&tag_id=${tagId}` : "") + (scope === "all" ? "&scope=all" : "")),
+  teamEntry: (id: string) => request<TeamEntryDetail>(`/team-calendar/entries/${id}/`),
 };
 
 /** Справочник тегов и ручное назначение. */
