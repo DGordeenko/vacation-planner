@@ -228,6 +228,90 @@ def _rule(code: str):
     return ValidationRule.objects.filter(code=code, is_enabled=True).first()
 
 
+def working_dates(date_from: date, date_to: date) -> set:
+    """Рабочие дни периода: будни без праздников плюс перенесённые рабочие дни."""
+    days = Holiday.objects.filter(date__gte=date_from, date__lte=date_to)
+    holidays = {d.date for d in days if d.day_type == Holiday.DayType.HOLIDAY}
+    transferred = {d.date for d in days
+                   if d.day_type == Holiday.DayType.TRANSFERRED_WORKDAY}
+    result = set()
+    current = date_from
+    while current <= date_to:
+        if current in transferred or (
+                current.weekday() not in (SATURDAY, SUNDAY) and current not in holidays):
+            result.add(current)
+        current += timedelta(days=1)
+    return result
+
+
+def _active_vacations(employee, exclude_entry_id=None):
+    entries = ScheduleEntry.objects.filter(
+        employee=employee, record_type=ScheduleEntry.RecordType.VACATION,
+    ).exclude(status__in=[ScheduleEntry.Status.CANCELLED, ScheduleEntry.Status.REJECTED])
+    if exclude_entry_id:
+        entries = entries.exclude(id=exclude_entry_id)
+    return entries
+
+
+def continuous_block(employee, date_from: date, date_to: date, exclude_entry_id=None):
+    """Непрерывное отсутствие, в которое входит период.
+
+    Отпуска, между которыми только выходные и праздники, — одно отсутствие:
+    пять дней, выходные, ещё пять дней, выходные и три дня — это 13 рабочих
+    дней подряд, сколько бы записей их ни составляло.
+    """
+    others = [(e.date_from, e.effective_date_to) for e in _active_vacations(
+        employee, exclude_entry_id)]
+    start, end = date_from, date_to
+    changed = True
+    while changed:
+        changed = False
+        for other_from, other_to in others:
+            if other_from >= start and other_to <= end:
+                continue
+            touches_before = other_to < start and not working_dates(
+                other_to + timedelta(days=1), start - timedelta(days=1))
+            touches_after = other_from > end and not working_dates(
+                end + timedelta(days=1), other_from - timedelta(days=1))
+            overlaps = other_from <= end and other_to >= start
+            if touches_before or touches_after or overlaps:
+                start, end = min(start, other_from), max(end, other_to)
+                changed = True
+    return start, end
+
+
+def planned_days_in_year(employee, year: int, exclude_entry_id=None) -> int:
+    """Отпускные дни года по всем отпускам сотрудника, включая черновики."""
+    return sum(split_by_year(e.date_from, e.effective_date_to).get(year, 0)
+               for e in _active_vacations(employee, exclude_entry_id))
+
+
+def annual_ceiling(employee, year: int):
+    """Сколько дней можно запланировать на год.
+
+    Норма плюс накопленное на 1 января, но не больше порога правила
+    annual_ceiling (42 по умолчанию). Возвращает потолок и значение
+    «норма + накопленное» — оно нужно для объяснения в сообщении.
+    """
+    settings_row = CompanySettings.get_solo()
+    norm = int(employee.annual_vacation_norm_override or settings_row.annual_vacation_norm_days)
+    stock_raw = balance_on(employee, date(year, 1, 1))
+    stock = int(stock_raw) if stock_raw > 0 else 0
+    accumulated_ceiling = norm + stock
+    rule = _rule("annual_ceiling")
+    if rule and rule.threshold_value is not None:
+        return min(accumulated_ceiling, int(rule.threshold_value)), accumulated_ceiling
+    return accumulated_ceiling, accumulated_ceiling
+
+
+def own_draft_days(employee, on_date: date, exclude_entry_id=None) -> Decimal:
+    """Отпускные дни собственных черновиков, начинающихся не позже даты."""
+    drafts = _active_vacations(employee, exclude_entry_id).filter(
+        status=ScheduleEntry.Status.DRAFT, date_from__lte=on_date)
+    return sum((Decimal(vacation_days(e.date_from, e.effective_date_to)) for e in drafts),
+               Decimal("0"))
+
+
 def validate_entry(employee: Employee, date_from: date, date_to: date, record_type: str,
                    exclude_entry_id=None) -> ValidationResult:
     """Проверки уровня отдельной записи."""
@@ -259,15 +343,39 @@ def validate_entry(employee: Employee, date_from: date, date_to: date, record_ty
             )
             break
 
-    rule = _rule("max_continuous_days")
-    if rule and days > rule.threshold_value:
-        result.violations.append(
-            RuleViolation(
-                code=rule.code,
-                name=rule.name,
-                message=f"Отпуск {days} дней превышает {round_days(rule.threshold_value)} дней подряд",
+    rule = _rule("max_continuous_workdays")
+    if rule:
+        start, end = continuous_block(employee, date_from, date_to, exclude_entry_id)
+        workdays = len(working_dates(start, end))
+        if workdays > rule.threshold_value:
+            joined = (start, end) != (date_from, date_to)
+            result.violations.append(
+                RuleViolation(
+                    code=rule.code,
+                    name=rule.name,
+                    message=(f"{'Вместе с соседними отпусками непрерывное' if joined else 'Непрерывное'}"
+                             f" отсутствие {start:%d.%m.%Y}—{end:%d.%m.%Y} — "
+                             f"{workdays} рабочих дней, больше "
+                             f"{round_days(rule.threshold_value)}"),
+                )
             )
-        )
+
+    rule = _rule("annual_ceiling")
+    if rule:
+        for year, added in split_by_year(date_from, date_to).items():
+            planned = planned_days_in_year(employee, year, exclude_entry_id) + added
+            ceiling, accumulated_ceiling = annual_ceiling(employee, year)
+            if planned > ceiling:
+                result.violations.append(
+                    RuleViolation(
+                        code=rule.code,
+                        name=rule.name,
+                        message=(f"В {year} году будет запланировано {planned} дней "
+                                 f"при допустимых {ceiling} (норма с накопленными — "
+                                 f"{accumulated_ceiling}, но не более "
+                                 f"{round_days(rule.threshold_value)} в год)"),
+                    )
+                )
 
     rule = _rule("no_weekend_captured")
     if rule and not captures_weekend(date_from, date_to):
@@ -281,7 +389,11 @@ def validate_entry(employee: Employee, date_from: date, date_to: date, record_ty
 
     rule = _rule("balance_overrun")
     if rule:
-        available = balance_on(employee, date_from)
+        # Собственные черновики тоже расходуют баланс: иначе каждый отпуск
+        # по отдельности укладывается в остаток, а вместе превышают его без
+        # ограничений. В балансе на экране черновики не списываются.
+        available = balance_on(employee, date_from) - own_draft_days(
+            employee, date_from, exclude_entry_id)
         overrun = Decimal(days) - available
         if overrun > rule.threshold_value:
             result.violations.append(
@@ -430,7 +542,7 @@ def annual_summary(employee: Employee, year: int) -> dict:
     # считается от него, как зафиксировано при проектировании.
     stock_raw = balance_on(employee, date(year, 1, 1))
     stock = int(stock_raw) if stock_raw > 0 else 0
-    ceiling = norm + stock
+    ceiling, _ = annual_ceiling(employee, year)
 
     absence_days = 0
     for entry in ScheduleEntry.objects.filter(

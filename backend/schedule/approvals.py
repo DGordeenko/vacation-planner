@@ -103,6 +103,22 @@ def approve_exception(entry, rule_code, approver, comment):
     approval = ExceptionApproval.objects.create(
         schedule_entry=entry, rule=rule, approved_by=approver, comment=comment.strip())
 
+    if rule.code == "max_continuous_workdays":
+        # Правило срабатывает на всё непрерывное отсутствие, а не на одну
+        # запись: подтверждение распространяется на соседние черновики того же
+        # отсутствия, иначе каждый пришлось бы подтверждать отдельно. Если
+        # отсутствие потом удлинят, новая запись потребует нового подтверждения.
+        start, end = calculations.continuous_block(
+            entry.employee, entry.date_from, entry.effective_date_to, entry.id)
+        neighbours = ScheduleEntry.objects.filter(
+            employee=entry.employee, record_type=ScheduleEntry.RecordType.VACATION,
+            status=ScheduleEntry.Status.DRAFT, date_from__gte=start, date_from__lte=end,
+        ).exclude(id=entry.id).exclude(exception_approvals__rule=rule)
+        for neighbour in neighbours:
+            ExceptionApproval.objects.create(
+                schedule_entry=neighbour, rule=rule, approved_by=approver,
+                comment=comment.strip())
+
     notify(entry.employee, Notification.NotificationType.APPROVAL_DECIDED,
            f"{approver.full_name} подтвердил исключение «{rule.name}» "
            f"для отпуска {entry.date_from}—{entry.effective_date_to}", entry)
