@@ -9,7 +9,7 @@ class AuditConfig(AppConfig):
     def ready(self):
         from audit import recording
         from company.models import CompanySettings, Holiday
-        from employees.models import Employee, EmployeeTag, OrgUnit
+        from employees.models import Employee, EmployeeTag, OrgUnit, Tag
         from schedule.models import (
             ApprovalStep, ExceptionApproval, ScheduleApproval,
             ScheduleEntry, ValidationRule, VacationLedger,
@@ -46,6 +46,9 @@ class AuditConfig(AppConfig):
             label=lambda o: f"{o.full_name} ({o.employee_number})",
             subject=lambda o: o)
         recording.track(OrgUnit, label=lambda o: o.name)
+        # Лимит тега меняет, кого заблокирует проверка, — изменение должно
+        # быть видно в журнале.
+        recording.track(Tag, label=lambda o: f"Тег «{o.name}»")
         recording.track(Holiday, label=lambda o: f"{o.date} {o.name}")
         recording.track(ValidationRule, label=lambda o: o.name)
         recording.track(CompanySettings, label=lambda o: "Настройки компании")
