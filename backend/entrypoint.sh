@@ -17,6 +17,23 @@ fi
 # Пароль не выводится: команда его не печатает, а set -x здесь не включён.
 python manage.py ensure_admin
 
+# Демо-режим (docs/15-demo-mode.md): отдельная база, данные загружаются
+# заново при каждом старте — так демо само сбрасывается после посетителей.
+# Миграции демо-базы идут здесь же, а не по RUN_MIGRATIONS: по умолчанию
+# демо-база — SQLite внутри контейнера, и у каждой реплики она своя.
+# DEMO_LOAD_ON_START=0 — для общей демо-базы Postgres, которую готовит Job.
+is_true() {
+    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+if is_true "${DEMO_MODE_ENABLED:-0}" && is_true "${DEMO_LOAD_ON_START:-1}"; then
+    echo "Готовим демо-базу..."
+    python manage.py migrate --database=demo --noinput
+    python manage.py load_demo
+fi
+
 exec gunicorn config.wsgi:application \
     --bind "0.0.0.0:${PORT:-8000}" \
     --workers "${GUNICORN_WORKERS:-3}" \

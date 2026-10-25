@@ -27,9 +27,11 @@ class AuthMethodsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
+        from demo.views import demo_methods
         return Response({
             "password_login": services.password_login_allowed(),
             "providers": services.available_providers(),
+            "demo": demo_methods(),
         })
 
 

@@ -12,6 +12,11 @@ from mailer.composing import queue_for_notification
 
 
 def handle_notification_created(sender, instance, created, **kwargs):
+    from demo.db import is_demo_active
+    # Адреса в демо вымышленные, а письмо — единственное, что выходит
+    # за пределы демо-базы. Уведомление в ленте при этом остаётся.
+    if is_demo_active():
+        return
     if created:
         queue_for_notification(instance)
 

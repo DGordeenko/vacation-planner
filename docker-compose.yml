@@ -33,6 +33,10 @@ services:
       ADMIN_FULL_NAME: ${ADMIN_FULL_NAME:-}
       ADMIN_EMPLOYEE_NUMBER: ${ADMIN_EMPLOYEE_NUMBER:-}
       ADMIN_HIRE_DATE: ${ADMIN_HIRE_DATE:-}
+      # Демо-режим, см. docs/15-demo-mode.md
+      DEMO_MODE_ENABLED: ${DEMO_MODE_ENABLED:-False}
+      DEMO_DATABASE_URL: ${DEMO_DATABASE_URL:-}
+      DEMO_LOAD_ON_START: ${DEMO_LOAD_ON_START:-1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,7 +45,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      # С демо-режимом старт дольше: данные загружаются заново (~15 с)
+      start_period: 60s
 
   frontend:
     build:
