@@ -158,8 +158,12 @@ def _database_from_url(url):
     scheme = parsed.scheme.split("+")[0]
 
     if scheme == "sqlite":
+        # Как в dj-database-url: sqlite:///db.sqlite3 — путь относительно
+        # рабочего каталога, sqlite:////tmp/db.sqlite3 — абсолютный.
+        # Снимается ровно один ведущий слеш, иначе абсолютный путь
+        # молча превращался в относительный.
         path = parsed.path or "/db.sqlite3"
-        return {"ENGINE": "django.db.backends.sqlite3", "NAME": path.lstrip("/")}
+        return {"ENGINE": "django.db.backends.sqlite3", "NAME": path[1:]}
 
     if scheme not in ("postgres", "postgresql"):
         raise ValueError(f"Неподдерживаемая схема в DATABASE_URL: {parsed.scheme}")
