@@ -3,6 +3,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from config.health import HealthView
+from demo.views import DemoLoginView
 
 from audit.views import AuditLogViewSet
 from company.views import HolidayAdminViewSet
@@ -55,6 +56,7 @@ urlpatterns = [
     path("api/v1/auth/oidc/start/", OidcStartView.as_view()),
     path("api/v1/auth/oidc/callback/", OidcCallbackView.as_view()),
     path("api/v1/auth/login/", LoginView.as_view()),
+    path("api/v1/auth/demo-login/", DemoLoginView.as_view()),
     path("api/v1/auth/me/", AuthMeView.as_view()),
     path("api/v1/auth/accept-invitation/", InvitationAcceptView.as_view()),
     path("api/v1/employees/<uuid:employee_id>/balance/", BalanceView.as_view()),

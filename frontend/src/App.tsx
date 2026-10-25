@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, ApiError, persistToken, restoreToken } from "./api";
+import { api, ApiError, isDemo, persistToken, restoreToken } from "./api";
 import { fmt } from "./dates";
 import Login from "./components/Login";
 import SummaryPanel from "./components/SummaryPanel";
@@ -188,6 +188,24 @@ export default function App() {
     }
   }
 
+  /* Выход сбрасывает и состояние экрана: иначе после смены пользователя
+     (в демо — смены роли) осталось бы выделение и открытая панель прежнего. */
+  function signOut() {
+    persistToken(null);
+    setAuthorized(false);
+    setMe(null);
+    setSummary(null);
+    setEntries([]);
+    setNotifications([]);
+    setAnchor(null);
+    setHover(null);
+    setSelection(null);
+    setOpenEntry(null);
+    setActiveTagId(null);
+    setError(null);
+    setView("schedule");
+  }
+
   if (!authorized) {
     return <Login onSuccess={() => { setAuthorized(true); setLoading(true); }} />;
   }
@@ -204,6 +222,17 @@ export default function App() {
       ["--brand-contrast" as string]: contrast,
       ["--brand-radius" as string]: branding.brand_radius,
     }}>
+      {isDemo() && (
+        <div className="vs-demo-strip" role="status">
+          <strong>Демо-режим</strong>
+          <span>
+            Данные вымышленные. Изменения видят все посетители демо,
+            при перезапуске сервиса всё возвращается к исходному.
+          </span>
+          <button className="vs-link" onClick={signOut}>Сменить роль</button>
+        </div>
+      )}
+
       <header className="vs-bar">
         <div className="vs-mark">{branding.organization_name.slice(0, 1)}</div>
         <div>
@@ -218,9 +247,7 @@ export default function App() {
             </button>
           )}
           <span className="vs-muted vs-small">{me.full_name}</span>
-          <button className="vs-link" onClick={() => {
-            persistToken(null); setAuthorized(false);
-          }}>Выйти</button>
+          <button className="vs-link" onClick={signOut}>Выйти</button>
         </div>
       </header>
 

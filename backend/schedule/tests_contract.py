@@ -7,7 +7,7 @@
 
 from datetime import date
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from company.models import CompanySettings, Holiday
@@ -132,3 +132,38 @@ class ApiContractTests(TestCase):
                                  {"brand_primary_color": "#123456"}, format="json")
         self.assertEqual(good.status_code, 200)
         self.assertEqual(good.json()["brand_primary_color"], "#123456")
+
+
+AUTH_METHODS_FIELDS = {"password_login", "providers", "demo"}
+DEMO_METHODS_FIELDS = {"enabled", "roles"}
+DEMO_ROLE_FIELDS = {"code", "title", "description", "full_name"}
+DEMO_LOGIN_FIELDS = {"token", "employee_id", "scheme", "role"}
+
+
+@override_settings(DEMO_MODE_ENABLED=True)
+class DemoContractTests(TestCase):
+    """Экран входа и вход в демо (types.ts: AuthMethods, DemoRole, DemoLogin)."""
+
+    databases = {"default", "demo"}
+
+    def setUp(self):
+        from demo.data import ROLES
+        from demo.db import use_demo_database
+        with use_demo_database():
+            for role in ROLES:
+                Employee.objects.create_user(
+                    email=f"{role.code}@test-corp.example",
+                    employee_number=role.employee_number, full_name=role.title,
+                    hire_date=date(2020, 1, 1))
+        self.client = APIClient()
+
+    def test_auth_methods_contract(self):
+        body = self.client.get("/api/v1/auth/methods/").json()
+        self.assertEqual(AUTH_METHODS_FIELDS, set(body))
+        self.assertEqual(DEMO_METHODS_FIELDS, set(body["demo"]))
+        self.assertEqual(DEMO_ROLE_FIELDS, set(body["demo"]["roles"][0]))
+
+    def test_demo_login_contract(self):
+        body = self.client.post("/api/v1/auth/demo-login/", {"role": "manager"},
+                                format="json").json()
+        self.assertEqual(DEMO_LOGIN_FIELDS, set(body))

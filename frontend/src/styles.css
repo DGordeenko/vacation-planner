@@ -351,3 +351,29 @@ body {
 .vs-login-divider::before, .vs-login-divider::after {
   content: ""; flex: 1; height: 1px; background: var(--line);
 }
+
+/* --- Демо-режим --- */
+
+.vs-demo-hint { text-align: center; }
+.vs-demo-card { width: min(420px, calc(100vw - 48px)); }
+.vs-demo-roles { display: grid; gap: 8px; }
+.vs-demo-role {
+  display: grid; gap: 2px; text-align: left; cursor: pointer;
+  font: inherit; color: var(--ink); background: var(--paper);
+  border: 1px solid var(--line); border-radius: var(--brand-radius);
+  padding: 11px 13px;
+}
+.vs-demo-role:hover:not(:disabled) { border-color: var(--brand); }
+.vs-demo-role:disabled { opacity: 0.45; cursor: not-allowed; }
+.vs-demo-role-title { font-weight: 600; font-size: 14px; }
+.vs-demo-role-name { font-size: 12px; color: var(--muted); }
+.vs-demo-role-text { font-size: 12.5px; margin-top: 4px; }
+
+/* Плашка видна постоянно: в демо легко забыть, что данные не настоящие. */
+.vs-demo-strip {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 7px 24px; font-size: 12.5px;
+  background: #fdf6ec; border-bottom: 1px solid #f0dcc2; color: var(--ink);
+}
+.vs-demo-strip strong { color: var(--warn); }
+.vs-demo-strip .vs-link { margin-left: auto; }

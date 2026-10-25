@@ -24,6 +24,16 @@ RULES = [
      "Число сотрудников с одним тегом в отпуске не должно превышать лимит"),
 ]
 
+# Используется и демо-режимом (demo/loader.py): справочники должны совпадать.
+ABSENCE_REASONS = [
+    ("sick_leave", "Больничный", False),
+    ("unpaid_leave", "Отпуск за свой счёт", False),
+    ("family_reasons", "Семейные обстоятельства", False),
+    ("public_duty", "Государственные обязанности", False),
+    ("absence_no_reason", "Отсутствие без уважительной причины", False),
+    ("other", "Другое", True),
+]
+
 HOLIDAYS_2027 = [
     (date(2027, 1, 1), "Новый год"),
     (date(2027, 1, 4), "Новогодние каникулы"),
@@ -59,14 +69,7 @@ class Command(BaseCommand):
                 date=day, defaults={"name": name,
                                     "day_type": Holiday.DayType.HOLIDAY})
 
-        for code, name, is_other in [
-            ("sick_leave", "Больничный", False),
-            ("unpaid_leave", "Отпуск за свой счёт", False),
-            ("family_reasons", "Семейные обстоятельства", False),
-            ("public_duty", "Государственные обязанности", False),
-            ("absence_no_reason", "Отсутствие без уважительной причины", False),
-            ("other", "Другое", True),
-        ]:
+        for code, name, is_other in ABSENCE_REASONS:
             AbsenceReason.objects.get_or_create(
                 code=code, defaults={"name": name, "is_other": is_other})
 

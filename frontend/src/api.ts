@@ -6,7 +6,8 @@
 */
 
 import type {
-  AnnualSummary, AuthMethods, Branding, CalendarImpact, DayType, Holiday, HolidayRow,
+  AnnualSummary, AuthMethods, Branding, CalendarImpact, DayType, DemoLogin, DemoRoleCode,
+  Holiday, HolidayRow,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
   ValidationResult, YearSummary,
 } from "./types";
@@ -17,8 +18,14 @@ import type {
 const API_ROOT = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
 const BASE = `${API_ROOT}/api/v1`;
 const TOKEN_KEY = "vs_token";
+const SCHEME_KEY = "vs_token_scheme";
+
+/* Схема заголовка авторизации. Demo — вход в демо-режим: сервер выполняет
+   такой запрос целиком на отдельной демо-базе. */
+export type TokenScheme = "Token" | "Demo";
 
 let token: string | null = null;
+let scheme: TokenScheme = "Token";
 
 export function setToken(value: string | null) {
   token = value;
@@ -40,7 +47,7 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Token ${token}`;
+  if (token) headers.Authorization = `${scheme} ${token}`;
 
   const response = await fetch(BASE + path, {
     ...init,
@@ -69,6 +76,13 @@ export const api = {
     request<{ token: string; employee_id: string }>("/auth/accept-invitation/", {
       method: "POST",
       body: JSON.stringify({ invitation_token, password }),
+    }),
+
+  /** Демо-режим: вход выбором роли, без пароля. */
+  demoLogin: (role: DemoRoleCode) =>
+    request<DemoLogin>("/auth/demo-login/", {
+      method: "POST",
+      body: JSON.stringify({ role }),
     }),
 
   me: () => request<Me>("/auth/me/"),
@@ -194,19 +208,33 @@ export const adminApi = {
 export function restoreToken() {
   try {
     const stored = sessionStorage.getItem(TOKEN_KEY);
-    if (stored) token = stored;
+    if (stored) {
+      token = stored;
+      scheme = sessionStorage.getItem(SCHEME_KEY) === "Demo" ? "Demo" : "Token";
+    }
     return stored;
   } catch {
     return null;
   }
 }
 
-export function persistToken(value: string | null) {
+export function persistToken(value: string | null, tokenScheme: TokenScheme = "Token") {
   token = value;
+  scheme = value ? tokenScheme : "Token";
   try {
-    if (value) sessionStorage.setItem(TOKEN_KEY, value);
-    else sessionStorage.removeItem(TOKEN_KEY);
+    if (value) {
+      sessionStorage.setItem(TOKEN_KEY, value);
+      sessionStorage.setItem(SCHEME_KEY, scheme);
+    } else {
+      sessionStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(SCHEME_KEY);
+    }
   } catch {
     /* приватный режим браузера — токен останется только в памяти */
   }
+}
+
+/** Открыт ли сейчас демо-режим: интерфейс показывает об этом плашку. */
+export function isDemo() {
+  return Boolean(token) && scheme === "Demo";
 }

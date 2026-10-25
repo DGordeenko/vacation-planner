@@ -20,6 +20,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Образец значений — в .env.example в корне проекта.
 
 import os
+import tempfile
 
 
 def _env_list(name, default=""):
@@ -54,12 +55,14 @@ INSTALLED_APPS = [
     'audit',
     'sso',
     'mailer',
+    'demo',
 ]
 
 AUTH_USER_MODEL = 'employees.Employee'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'demo.authentication.DemoTokenAuthentication',
         'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
@@ -114,6 +117,9 @@ MIDDLEWARE = [
     'config.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    # До сессий и аутентификации: всё, что они читают, в демо-запросе
+    # должно прийти из демо-базы.
+    'demo.middleware.DemoDatabaseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -158,8 +164,12 @@ def _database_from_url(url):
     scheme = parsed.scheme.split("+")[0]
 
     if scheme == "sqlite":
+        # Как в dj-database-url: sqlite:///db.sqlite3 — путь относительно
+        # рабочего каталога, sqlite:////tmp/db.sqlite3 — абсолютный.
+        # Снимается ровно один ведущий слеш, иначе абсолютный путь
+        # молча превращался в относительный.
         path = parsed.path or "/db.sqlite3"
-        return {"ENGINE": "django.db.backends.sqlite3", "NAME": path.lstrip("/")}
+        return {"ENGINE": "django.db.backends.sqlite3", "NAME": path[1:]}
 
     if scheme not in ("postgres", "postgresql"):
         raise ValueError(f"Неподдерживаемая схема в DATABASE_URL: {parsed.scheme}")
@@ -183,6 +193,20 @@ DATABASES = {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
     }
+}
+
+# --- Демонстрационный режим (docs/15-demo-mode.md) ----------------------
+# Демо работает на том же экземпляре, но в отдельной базе: справочники,
+# праздники и настройки глобальные, и в общей базе демо их бы переписало.
+# По умолчанию — SQLite во временном каталоге: данные заново загружаются
+# при каждом старте, хранить их незачем. Для нескольких реплик нужна
+# общая база — DEMO_DATABASE_URL с адресом отдельной базы Postgres.
+DEMO_MODE_ENABLED = os.environ.get("DEMO_MODE_ENABLED", "False").lower() in ("1", "true", "yes")
+
+_demo_database_url = os.environ.get("DEMO_DATABASE_URL", "")
+DATABASES["demo"] = _database_from_url(_demo_database_url) if _demo_database_url else {
+    "ENGINE": "django.db.backends.sqlite3",
+    "NAME": Path(tempfile.gettempdir()) / "vacation-planner-demo.sqlite3",
 }
 
 

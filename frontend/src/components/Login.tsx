@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, persistToken } from "../api";
-import type { AuthMethods } from "../types";
+import type { AuthMethods, DemoRoleCode } from "../types";
 
 export default function Login({ onSuccess }: { onSuccess: () => void }) {
   const [methods, setMethods] = useState<AuthMethods | null>(null);
@@ -8,10 +8,11 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(false);
 
   useEffect(() => {
     api.authMethods().then(setMethods).catch(() => setMethods({
-      password_login: true, providers: [],
+      password_login: true, providers: [], demo: { enabled: false, roles: [] },
     }));
   }, []);
 
@@ -74,6 +75,59 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
     }
   }
 
+  async function demoLogin(role: DemoRoleCode) {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.demoLogin(role);
+      persistToken(result.token, result.scheme);
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось открыть демо-режим");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const demo = methods?.demo.enabled ? methods.demo : null;
+
+  if (demo && demoOpen) {
+    return (
+      <div className="vs-login">
+        <div className="vs-card vs-login-card vs-demo-card">
+          <h1>Демо-режим</h1>
+          <p className="vs-muted">
+            Вымышленная компания на 157 человек с готовым графиком на следующий
+            год. Выберите, кем войти, — пароль не нужен.
+          </p>
+
+          <div className="vs-demo-roles">
+            {demo.roles.map((role) => (
+              <button key={role.code} className="vs-demo-role"
+                onClick={() => demoLogin(role.code)} disabled={busy}>
+                <span className="vs-demo-role-title">{role.title}</span>
+                <span className="vs-demo-role-name">{role.full_name}</span>
+                <span className="vs-demo-role-text">{role.description}</span>
+              </button>
+            ))}
+          </div>
+
+          <p className="vs-small vs-muted">
+            Изменения в демо видят все его посетители. Данные сбрасываются
+            при перезапуске сервиса и не связаны с рабочей системой.
+          </p>
+
+          {error && <div className="vs-issue"><div className="vs-issue-text">{error}</div></div>}
+
+          <button className="vs-link" onClick={() => { setDemoOpen(false); setError(null); }}
+            disabled={busy}>
+            ← Обычный вход
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const kerberos = methods?.providers.find((p) => p.name === "kerberos" && p.configured);
   const keycloak = methods?.providers.find((p) => p.name === "keycloak" && p.configured);
   const hasDomain = Boolean(kerberos || keycloak);
@@ -126,6 +180,19 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
         )}
 
         {error && <div className="vs-issue"><div className="vs-issue-text">{error}</div></div>}
+
+        {demo && (
+          <>
+            <div className="vs-login-divider"><span>или</span></div>
+            <button className="vs-btn block" onClick={() => { setDemoOpen(true); setError(null); }}
+              disabled={busy}>
+              Демо-режим
+            </button>
+            <p className="vs-small vs-muted vs-demo-hint">
+              Посмотреть возможности на готовых данных, без регистрации
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
