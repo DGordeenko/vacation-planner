@@ -378,13 +378,26 @@ class ApiFlowTests(TestCase):
         self.assertIn("no_weekend_captured", [v["code"] for v in body["violations"]])
         self.assertEqual(ScheduleEntry.objects.count(), 0)
 
-    def test_create_blocked_returns_409(self):
+    def test_create_with_approvable_violation_saves_draft(self):
+        """Нарушение, которое может подтвердить руководитель, сохраняется
+        черновиком с пометкой — иначе подтверждать было бы нечего."""
         self.client.force_authenticate(self.employee)
         response = self.client.post("/api/v1/schedule-entries/", {
             "date_from": "2027-03-02", "date_to": "2027-03-04",
             "record_type": "vacation"}, format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["status"], "draft")
+        self.assertEqual([v["code"] for v in response.json()["pending_exceptions"]],
+                         ["no_weekend_captured"])
+
+    def test_create_overlapping_own_vacation_returns_409(self):
+        self.client.force_authenticate(self.employee)
+        payload = {"date_from": "2027-03-05", "date_to": "2027-03-08",
+                   "record_type": "vacation"}
+        self.client.post("/api/v1/schedule-entries/", payload, format="json")
+        response = self.client.post("/api/v1/schedule-entries/", payload, format="json")
         self.assertEqual(response.status_code, 409)
-        self.assertEqual(ScheduleEntry.objects.count(), 0)
+        self.assertEqual(ScheduleEntry.objects.count(), 1)
 
     def test_create_valid_entry(self):
         self.client.force_authenticate(self.employee)

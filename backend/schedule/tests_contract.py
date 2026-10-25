@@ -86,7 +86,8 @@ class ApiContractTests(TestCase):
             "record_type": "vacation"}, format="json").json()
         self.assertEqual(VALIDATION_FIELDS, set(body))
         self.assertEqual(
-            {"code", "name", "message", "can_be_approved"}, set(body["violations"][0]))
+            {"code", "name", "message", "can_be_approved", "colleagues"},
+            set(body["violations"][0]))
         self.assertEqual(
             {"suggested_date_to", "added_days"}, set(body["holiday_extension"]))
 
@@ -98,13 +99,17 @@ class ApiContractTests(TestCase):
         expected = {"id", "employee", "employee_name", "record_type", "date_from",
                     "date_to", "reason", "custom_reason_text", "task_link",
                     "overtime_hours", "rvd_compensation_type",
-                    "extended_by_holiday_days", "status", "vacation_days", "created_at"}
+                    "extended_by_holiday_days", "status", "vacation_days",
+                    "pending_exceptions", "created_at"}
         self.assertEqual(expected, set(response.json()))
 
     def test_blocked_creation_returns_violations(self):
-        response = self.client.post("/api/v1/schedule-entries/", {
-            "date_from": "2027-03-02", "date_to": "2027-03-04",
-            "record_type": "vacation"}, format="json")
+        """Не подлежащее подтверждению нарушение (пересечение со своим
+        отпуском) — 409 со списком нарушений."""
+        payload = {"date_from": "2027-03-05", "date_to": "2027-03-08",
+                   "record_type": "vacation"}
+        self.client.post("/api/v1/schedule-entries/", payload, format="json")
+        response = self.client.post("/api/v1/schedule-entries/", payload, format="json")
         self.assertEqual(response.status_code, 409)
         self.assertIn("violations", response.json())
 

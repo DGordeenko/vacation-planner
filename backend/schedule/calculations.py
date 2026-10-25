@@ -210,6 +210,9 @@ class RuleViolation:
     name: str
     message: str
     can_be_approved: bool = True
+    # Для лимита по тегу: кто из коллег уже в отпуске и когда. Сотрудникам
+    # проще договориться о датах, когда видно, с кем пересечение.
+    colleagues: list = field(default_factory=list)
 
 
 @dataclass
@@ -327,7 +330,11 @@ def _check_tag_limits(employee: Employee, date_from: date, date_to: date, exclud
         if exclude_entry_id:
             entries = entries.exclude(id=exclude_entry_id)
 
-        busy = {e.employee_id for e in entries if e.effective_date_to >= date_from}
+        overlapping = sorted(
+            (e for e in entries.select_related("employee")
+             if e.effective_date_to >= date_from),
+            key=lambda e: (e.date_from, e.employee.full_name))
+        busy = {e.employee_id for e in overlapping}
         if len(busy) >= tag.max_simultaneous_absence:
             violations.append(
                 RuleViolation(
@@ -335,7 +342,12 @@ def _check_tag_limits(employee: Employee, date_from: date, date_to: date, exclud
                     name=rule.name,
                     message=f"По тегу «{tag.name}» уже {len(busy)} из "
                             f"{tag.max_simultaneous_absence} сотрудников в отпуске "
-                            f"в период {date_from}—{date_to}",
+                            f"в период {date_from:%d.%m.%Y}—{date_to:%d.%m.%Y}",
+                    colleagues=[
+                        {"name": e.employee.full_name, "date_from": e.date_from,
+                         "date_to": e.effective_date_to}
+                        for e in overlapping
+                    ],
                 )
             )
     return violations
