@@ -285,15 +285,38 @@ export interface Decisions {
   exceptions: ExceptionDecision[];
 }
 
+export interface TeamCalendarEntry extends TeamEntry {
+  /** У кого сейчас решение: согласующий графика или руководитель по исключению. */
+  waiting_for: string | null;
+}
+
+export type TeamScope = "mine" | "all";
+
 export interface TeamCalendar {
   date_from: string;
   date_to: string;
+  scope: TeamScope;
+  /** Руководитель может переключиться на график всех подразделений. */
+  can_view_all: boolean;
   tag: { id: string; name: string; limit: number | null } | null;
   limit_reached: { date: string; count: number }[];
   rows: {
     employee_id: string;
     full_name: string;
     org_unit: string | null;
-    entries: TeamEntry[];
+    /** Сотрудник из своей структуры; по чужим видны только планы без черновиков. */
+    own: boolean;
+    entries: TeamCalendarEntry[];
   }[];
+}
+
+export interface TeamChainStep extends ApprovalStepRow {
+  is_current: boolean;
+}
+
+export interface TeamEntryDetail extends TeamEntry {
+  employee_name: string;
+  org_unit: string | null;
+  steps: TeamChainStep[];
+  exception: { approver_name: string; violations: Violation[] } | null;
 }

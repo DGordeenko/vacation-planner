@@ -145,3 +145,95 @@ class TeamCalendarTests(ApprovalBase):
     def test_period_longer_than_quarter_rejected(self):
         response = self.get(self.chief, date_from="2027-01-01", date_to="2027-12-31")
         self.assertEqual(response.status_code, 400)
+
+
+class TeamCalendarScopeTests(ApprovalBase):
+    """Своя ветка по умолчанию, вся компания — по выбору руководителя."""
+
+    def setUp(self):
+        super().setUp()
+        from employees.models import OrgUnit
+        other = OrgUnit.objects.create(name="Отдел Чужой",
+                                       unit_type=OrgUnit.UnitType.DEPARTMENT)
+        self.other_chief = Employee.objects.create_user(
+            email="oc@x.ru", employee_number="910", full_name="Олег Соседов",
+            hire_date=date(2015, 1, 1), org_unit=other)
+        other.manager = self.other_chief
+        other.save()
+        self.stranger = Employee.objects.create_user(
+            email="st@x.ru", employee_number="911", full_name="Сергей Чужой",
+            hire_date=date(2018, 1, 1), org_unit=other)
+        self.stranger_draft = self.vacation(self.stranger, 6, 1, 7)
+        self.stranger_approved = self.vacation(self.stranger, 7, 12, 18,
+                                               ScheduleEntry.Status.APPROVED)
+
+    def vacation(self, who, month, first, last, status=ScheduleEntry.Status.DRAFT):
+        return ScheduleEntry.objects.create(
+            employee=who, created_by=who, record_type=ScheduleEntry.RecordType.VACATION,
+            date_from=date(2027, month, first), date_to=date(2027, month, last), status=status)
+
+    def calendar(self, who, month, **params):
+        self.client.force_authenticate(who)
+        query = "".join(f"&{k}={v}" for k, v in params.items())
+        return self.client.get(f"/api/v1/team-calendar/?date_from=2027-{month:02d}-01"
+                               f"&date_to=2027-{month:02d}-28{query}").json()
+
+    def test_own_branch_by_default(self):
+        body = self.calendar(self.chief, 7)
+        names = {r["full_name"] for r in body["rows"]}
+        self.assertNotIn("Сергей Чужой", names)
+        self.assertIn("Иван Иванов", names)
+        self.assertEqual(body["scope"], "mine")
+        self.assertTrue(body["can_view_all"])
+
+    def test_all_departments_show_only_planned_entries_of_others(self):
+        self.add_vacation(date(2027, 6, 14), date(2027, 6, 18))  # свой черновик виден
+        body = self.calendar(self.chief, 6, scope="all")
+        rows = {r["full_name"]: r for r in body["rows"]}
+        self.assertEqual(body["scope"], "all")
+        self.assertFalse(rows["Сергей Чужой"]["own"])
+        self.assertEqual(rows["Сергей Чужой"]["entries"], [])  # чужой черновик скрыт
+        self.assertEqual(len(rows["Иван Иванов"]["entries"]), 1)
+        self.assertTrue(rows["Иван Иванов"]["own"])
+        july = {r["full_name"]: r for r in self.calendar(self.chief, 7, scope="all")["rows"]}
+        self.assertEqual(july["Сергей Чужой"]["entries"][0]["status"], "approved")
+
+    def test_admin_always_sees_everyone(self):
+        body = self.calendar(self.admin, 7)
+        self.assertIn("Сергей Чужой", {r["full_name"] for r in body["rows"]})
+        self.assertFalse(body["can_view_all"])
+
+    def test_pending_plan_shows_current_approver(self):
+        self.full_year_plan()
+        approvals.submit_year(self.employee, 2027, self.employee)
+        rows = {r["full_name"]: r for r in self.calendar(self.chief, 7)["rows"]}
+        entry = rows["Иван Иванов"]["entries"][0]
+        self.assertEqual(entry["status"], "pending_approval")
+        self.assertEqual(entry["waiting_for"], "Пётр Начальников")
+
+        detail = self.client.get(f"/api/v1/team-calendar/entries/{entry['id']}/").json()
+        self.assertEqual(detail["employee_name"], "Иван Иванов")
+        self.assertEqual([s["approver_name"] for s in detail["steps"] if s["is_current"]],
+                         ["Пётр Начальников"])
+        self.assertIsNone(detail["exception"])
+
+    def test_draft_with_exception_request_shows_approver(self):
+        self.client.force_authenticate(self.employee)
+        entry_id = self.client.post("/api/v1/schedule-entries/", {
+            "date_from": "2027-03-02", "date_to": "2027-03-04", "record_type": "vacation",
+        }, format="json").json()["id"]
+        rows = {r["full_name"]: r for r in self.calendar(self.chief, 3)["rows"]}
+        self.assertEqual(rows["Иван Иванов"]["entries"][0]["waiting_for"], "Пётр Начальников")
+        detail = self.client.get(f"/api/v1/team-calendar/entries/{entry_id}/").json()
+        self.assertEqual(detail["exception"]["approver_name"], "Пётр Начальников")
+        self.assertTrue(detail["exception"]["violations"])
+
+    def test_detail_respects_visibility(self):
+        self.client.force_authenticate(self.chief)
+        url = "/api/v1/team-calendar/entries/{}/"
+        self.assertEqual(self.client.get(url.format(self.stranger_draft.id)).status_code, 404)
+        self.assertEqual(self.client.get(url.format(self.stranger_approved.id)).status_code,
+                         200)
+        self.client.force_authenticate(self.employee)
+        self.assertEqual(self.client.get(url.format(self.stranger_approved.id)).status_code,
+                         403)
