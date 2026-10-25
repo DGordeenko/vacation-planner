@@ -294,12 +294,12 @@ export default function App() {
                 </button>
                 <button className="vs-nav-item" aria-current={view === "team"}
                   onClick={() => setView("team")}>Команда</button>
+                <button className="vs-nav-item" aria-current={view === "tags"}
+                  onClick={() => setView("tags")}>Теги</button>
               </>
             )}
             {me.is_admin && (
               <>
-                <button className="vs-nav-item" aria-current={view === "tags"}
-                  onClick={() => setView("tags")}>Теги</button>
                 <button className="vs-nav-item" aria-current={view === "holidays"}
                   onClick={() => setView("holidays")}>Праздники</button>
               </>
@@ -325,7 +325,8 @@ export default function App() {
       ) : view === "team" ? (
         <TeamCalendar year={YEAR} onBack={() => setView("schedule")} />
       ) : view === "tags" ? (
-        <TagsAdmin onBack={() => { setView("schedule"); void reload(); }} />
+        <TagsAdmin canEdit={me.is_admin}
+          onBack={() => { setView("schedule"); void reload(); }} />
       ) : (
       <div className="vs-shell">
         <aside className="vs-rail">
