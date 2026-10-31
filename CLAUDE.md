@@ -26,10 +26,10 @@
 Не называй функцию готовой, пока у неё нет экрана: сотрудник и руководитель
 работают только через интерфейс.
 
-CI (`.github/workflows/ci.yml`) на каждый push в `main` и PR: тесты бэкенда
-на PostgreSQL, проверка несозданных миграций, типы и сборка фронтенда, сборка
-образов и запуск через `docker compose`. Чего нет: линтеров, манифестов
-Kubernetes — итерации 2 и 3 в `docs/tasks/00-skeleton.md`. Поддерживаются три способа
+CI (`.github/workflows/ci.yml`) на каждый push в `main` и PR: линтеры (ruff,
+ESLint), тесты бэкенда на PostgreSQL, проверка несозданных миграций, типы
+и сборка фронтенда, сборка образов и запуск через `docker compose`. Чего нет:
+манифестов Kubernetes — итерация 3 в `docs/tasks/00-skeleton.md`. Поддерживаются три способа
 развёртывания — Docker, Kubernetes, Railway — из одних и тех же образов.
 Запуск через Docker и `docker compose` уже работает — см. `README.md`.
 
@@ -111,13 +111,16 @@ docs/        документация, задания на этапы в docs/ta
 ## Тесты
 
 ```bash
-cd backend && python manage.py test        # 430 тестов
-cd frontend && npx tsc -b && npm run build
+cd backend && pip install -r requirements-dev.txt
+cd backend && ruff check . && python manage.py test        # 430 тестов
+cd frontend && npm run lint && npx tsc -b && npm run build
 ```
 
-Те же проверки выполняет CI. Линтеров (`ruff`, ESLint) пока нет — добавляются
-на этапе из `docs/tasks/00-skeleton.md`. До этого не ссылайся на них как на
-существующие.
+Те же проверки выполняет CI. Тесты — штатным раннером Django (`manage.py test`),
+pytest не используется. Настройки ruff — `backend/pyproject.toml`, ESLint —
+`frontend/eslint.config.js`. Автоформатирование (`ruff format`) не включено:
+оно переписало бы 70+ файлов без пользы для поведения. Предупреждения ESLint
+считаются ошибками (`--max-warnings 0`).
 
 Числа для приёмки — `docs/08-acceptance-scenarios.md`: там конкретные значения,
 по которым принимается работа, а не общие формулировки.
