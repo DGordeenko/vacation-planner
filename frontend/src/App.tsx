@@ -8,6 +8,12 @@ import { ExistingEntryPanel, SelectionPanel } from "./components/EntryPanel";
 import HolidayAdmin from "./components/HolidayAdmin";
 import Decisions from "./components/Decisions";
 import TeamCalendar from "./components/TeamCalendar";
+import EmployeeImport from "./components/EmployeeImport";
+import AuditLog from "./components/AuditLog";
+import Settings from "./components/Settings";
+import TimeOff from "./components/TimeOff";
+import RvdAdmin from "./components/RvdAdmin";
+import NotificationBell from "./components/NotificationBell";
 import TagsAdmin from "./components/TagsAdmin";
 import type {
   AnnualSummary, Branding, Holiday, Me, Notification,
@@ -24,8 +30,27 @@ function bestContrast(hex: string) {
   return luminance > 0.45 ? "#16202b" : "#ffffff";
 }
 
+const VIEWS = ["schedule", "holidays", "decisions", "team", "tags", "employees", "audit",
+  "settings", "timeoff", "rvd"] as const;
+type View = typeof VIEWS[number];
+const ADMIN_VIEWS: { view: View; title: string }[] = [
+  { view: "employees", title: "Сотрудники" },
+  { view: "rvd", title: "РВД" },
+  { view: "holidays", title: "Праздники" },
+  { view: "audit", title: "Журнал" },
+  { view: "settings", title: "Настройки" },
+];
+
+function viewFromHash(): View {
+  const value = window.location.hash.slice(1);
+  return (VIEWS as readonly string[]).includes(value) ? value as View : "schedule";
+}
+
 export default function App() {
-  const [authorized, setAuthorized] = useState(Boolean(restoreToken()));
+  // Ссылка-приглашение открывает экран задания пароля, даже если в этом
+  // браузере уже кто-то вошёл: иначе ссылка молча откроет чужой график.
+  const [authorized, setAuthorized] = useState(
+    () => Boolean(restoreToken()) && !new URLSearchParams(window.location.search).has("invite"));
   const [me, setMe] = useState<Me | null>(null);
   const [branding, setBranding] = useState<Branding | null>(null);
   const [summary, setSummary] = useState<AnnualSummary | null>(null);
@@ -45,22 +70,39 @@ export default function App() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<
-    "schedule" | "holidays" | "decisions" | "team" | "tags">("schedule");
+  // Раздел хранится в адресе (#team): обновление страницы и кнопка «Назад»
+  // браузера возвращают туда же, а не на «Мой график».
+  const [view, setViewState] = useState<View>(viewFromHash);
+  const setView = useCallback((next: View) => {
+    setViewState(next);
+    const hash = next === "schedule" ? "" : `#${next}`;
+    if (window.location.hash !== hash) {
+      window.history.pushState(null, "", `${window.location.pathname}${window.location.search}${hash}`);
+    }
+    window.scrollTo(0, 0);
+  }, []);
+  useEffect(() => {
+    const onPop = () => setViewState(viewFromHash());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   const [decisionsCount, setDecisionsCount] = useState(0);
+  const [unread, setUnread] = useState(0);
 
   const reload = useCallback(async () => {
     if (!authorized) return;
     try {
       const profile = await api.me();
       setMe(profile);
-      const [brand, days, sum, list, inbox] = await Promise.all([
+      const [brand, days, sum, list, inbox, unreadCount] = await Promise.all([
         api.branding(),
         api.holidays(YEAR),
         api.summary(profile.id, YEAR),
         api.entries(profile.id, YEAR),
         api.notifications(),
+        api.unreadCount(),
       ]);
+      setUnread(unreadCount.count);
       setBranding(brand);
       setHolidays(new Map(days.map((d) => [d.date, d])));
       setSummary(sum);
@@ -129,7 +171,7 @@ export default function App() {
 
   // В режиме правок календарь доступен: записи снова в черновике.
   const locked = (summary?.submitted ?? false) || (summary?.year_approved ?? false);
-  const unread = notifications.filter((n) => !n.is_read).length;
+
 
   const dayClick = (key: string) => {
     if (locked) return;
@@ -256,6 +298,15 @@ export default function App() {
 
   const brand = branding.brand_primary_color;
   const contrast = branding.brand_contrast_color || bestContrast(brand);
+  const isAdminView = ADMIN_VIEWS.some((item) => item.view === view);
+  // Чужой раздел из адреса (#settings у сотрудника) молча ведёт на свой график:
+  // данные всё равно закрыл бы сервер, но пустой экран с ошибкой ни к чему.
+  const allowed = isAdminView ? me.is_admin
+    : ["decisions", "team", "tags"].includes(view) ? (me.is_manager || me.is_admin) : true;
+  if (!allowed) {
+    window.setTimeout(() => setView("schedule"), 0);
+    return <div className="vs-loading">Загружаем график…</div>;
+  }
 
   return (
     <div className={`vs-root${view === "schedule" && (selection || openEntry) ? " has-panel" : ""}`} style={{
@@ -281,10 +332,17 @@ export default function App() {
           <div className="vs-small vs-muted">График отпусков на {YEAR} год</div>
         </div>
         <div className="vs-right">
-          {unread > 0 && <span className="vs-badge">{unread}</span>}
+          <NotificationBell items={notifications} unread={unread} onChanged={() => void reload()}
+            onOpen={(note) => {
+              // Запросы на решение ведут туда, где решают; остальное — к своему графику.
+              const actionable = ["approval_required", "exception_required"].includes(note.notification_type);
+              setView(actionable && (me.is_manager || me.is_admin) ? "decisions" : "schedule");
+            }} />
           <nav className="vs-nav" aria-label="Разделы">
             <button className="vs-nav-item" aria-current={view === "schedule"}
               onClick={() => setView("schedule")}>Мой график</button>
+            <button className="vs-nav-item" aria-current={view === "timeoff"}
+              onClick={() => setView("timeoff")}>Отгулы</button>
             {(me.is_manager || me.is_admin) && (
               <>
                 <button className="vs-nav-item" aria-current={view === "decisions"}
@@ -299,16 +357,23 @@ export default function App() {
               </>
             )}
             {me.is_admin && (
-              <>
-                <button className="vs-nav-item" aria-current={view === "holidays"}
-                  onClick={() => setView("holidays")}>Праздники</button>
-              </>
+              <button className="vs-nav-item" aria-current={isAdminView}
+                onClick={() => setView(isAdminView ? view : "employees")}>Управление</button>
             )}
           </nav>
           <span className="vs-muted vs-small">{me.full_name}</span>
           <button className="vs-link" onClick={signOut}>Выйти</button>
         </div>
       </header>
+
+      {me.is_admin && isAdminView && (
+        <nav className="vs-subnav" aria-label="Управление">
+          {ADMIN_VIEWS.map((item) => (
+            <button key={item.view} className="vs-subnav-item" aria-current={view === item.view}
+              onClick={() => setView(item.view)}>{item.title}</button>
+          ))}
+        </nav>
+      )}
 
       {error && (
         <div className="vs-error">
@@ -319,6 +384,18 @@ export default function App() {
 
       {view === "holidays" ? (
         <HolidayAdmin onBack={() => { setView("schedule"); void reload(); }} />
+      ) : view === "rvd" ? (
+        <RvdAdmin onBack={() => setView("schedule")} />
+      ) : view === "timeoff" ? (
+        <TimeOff me={me} onBack={() => { setView("schedule"); void reload(); }}
+          onChanged={() => void reload()} />
+      ) : view === "settings" ? (
+        <Settings branding={branding} onBack={() => { setView("schedule"); void reload(); }}
+          onBrandingChanged={() => void reload()} />
+      ) : view === "audit" ? (
+        <AuditLog onBack={() => setView("schedule")} />
+      ) : view === "employees" ? (
+        <EmployeeImport onBack={() => { setView("schedule"); void reload(); }} />
       ) : view === "decisions" ? (
         <Decisions onBack={() => { setView("schedule"); void reload(); }}
           onChanged={() => void reload()} />
@@ -365,18 +442,6 @@ export default function App() {
             )}
           </div>
 
-          {notifications.length > 0 && (
-            <div className="vs-card">
-              <h2>Уведомления</h2>
-              <ul className="vs-list">
-                {notifications.slice(0, 5).map((note) => (
-                  <li className="vs-item vs-note-item" key={note.id}>
-                    <span className="vs-small">{note.message}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </aside>
 
         <main>

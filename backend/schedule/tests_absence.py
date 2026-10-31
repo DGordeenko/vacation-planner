@@ -38,10 +38,9 @@ class AbsenceBase(TestCase):
         self.admin.is_admin = True
         self.admin.save()
 
-        self.sick = AbsenceReason.objects.create(
-            code="sick_leave", name="Больничный")
-        self.other = AbsenceReason.objects.create(
-            code="other", name="Другое", is_other=True)
+        # Справочник создаёт миграция company/0004
+        self.sick = AbsenceReason.objects.get(code="sick_leave")
+        self.other = AbsenceReason.objects.get(code="other")
 
         self.yesterday = date.today() - timedelta(days=1)
         self.week_ago = date.today() - timedelta(days=7)
@@ -263,7 +262,7 @@ class ReasonDirectoryTests(AbsenceBase):
     def test_everyone_reads(self):
         self.client.force_authenticate(self.employee)
         body = self.client.get("/api/v1/absence-reasons/").json()
-        self.assertEqual(body["count"], 2)
+        self.assertEqual(body["count"], 6)  # справочник из миграции company/0004
 
     def test_only_admin_edits(self):
         self.client.force_authenticate(self.employee)
