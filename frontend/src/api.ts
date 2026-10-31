@@ -7,7 +7,7 @@
 
 import type {
   AnnualSummary, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
-  DemoRoleCode, EmployeeBrief, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
+  DemoRoleCode, EmployeeBrief, EmployeeImportReport, Invitation, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
   TeamEntryDetail, TeamScope,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
   ValidationResult, YearSummary,
@@ -223,6 +223,19 @@ export const tagsApi = {
 };
 
 /** Администрирование календаря праздников. */
+/** Загрузка кадровой выгрузки. Файл уходит байтами (base64): сервер сам
+    определяет кодировку, UTF-8 или CP1251, как у выгрузок из 1С. */
+export const employeesAdminApi = {
+  invitations: () => request<Invitation[]>("/admin/invitations/"),
+  reissueInvitation: (employeeId: string) =>
+    request<Invitation>(`/admin/invitations/${employeeId}/reissue/`, { method: "POST" }),
+  importCsv: (contentBase64: string, dryRun: boolean) =>
+    request<EmployeeImportReport>("/employees/import-csv/", {
+      method: "POST",
+      body: JSON.stringify({ content: contentBase64, dry_run: dryRun }),
+    }),
+};
+
 export const adminApi = {
   years: () => request<YearSummary[]>("/admin/holidays/years/"),
 
