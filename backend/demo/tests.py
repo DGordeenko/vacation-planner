@@ -310,8 +310,18 @@ class EntrypointTests(SimpleTestCase):
         self.assertTrue(self.gunicorn_started(calls))
 
     def test_demo_load_can_be_moved_to_job(self):
-        calls = self.run_entrypoint(DEMO_MODE_ENABLED="1", DEMO_LOAD_ON_START="0")
+        calls = self.run_entrypoint(DEMO_MODE_ENABLED="1", DEMO_LOAD_ON_START="0",
+                                    DEMO_RESET_DAILY="0")
         self.assertFalse(any("demo" in call for call in calls))
+
+    def test_daily_reset_started_with_demo(self):
+        """Ежедневный сброс — фоновый процесс рядом с gunicorn, только при демо."""
+        calls = self.run_entrypoint(DEMO_MODE_ENABLED="True")
+        self.assertIn("python manage.py demo_reset_daily", calls)
+        self.assertTrue(self.gunicorn_started(calls))
+        self.assertNotIn("python manage.py demo_reset_daily", self.run_entrypoint())
+        self.assertNotIn("python manage.py demo_reset_daily",
+                         self.run_entrypoint(DEMO_MODE_ENABLED="True", DEMO_RESET_DAILY="0"))
 
     def test_failed_demo_migration_does_not_stop_start(self):
         """Ровно сбой с Railway: миграция демо-базы падает, сервис стартует."""
