@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ApiError, employeesAdminApi } from "../api";
 import type { EmployeeImportReport, ImportProblem } from "../types";
+import Invitations from "./Invitations";
 
 const SAMPLE = `employee_number;full_name;email;hire_date;department;group;manager_employee_number;initial_balance_days;extra_tags
 1001;Иванов Иван Иванович;ivanov@corp.ru;2015-01-01;Отдел эксплуатации;;;31.5;
@@ -36,6 +37,7 @@ export default function EmployeeImport({ onBack }: { onBack: () => void }) {
   const [done, setDone] = useState<EmployeeImportReport | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(0);
 
   async function pick(file: File) {
     setFileName(file.name);
@@ -50,7 +52,7 @@ export default function EmployeeImport({ onBack }: { onBack: () => void }) {
     try {
       const result = await employeesAdminApi.importCsv(encoded, dryRun);
       if (dryRun) setReport(result);
-      else { setDone(result); setReport(null); setContent(null); }
+      else { setDone(result); setReport(null); setContent(null); setLoaded((n) => n + 1); }
     } catch (err) {
       const payload = err instanceof ApiError
         ? err.payload as EmployeeImportReport | undefined : undefined;
@@ -67,7 +69,7 @@ export default function EmployeeImport({ onBack }: { onBack: () => void }) {
     <div className="vs-admin">
       <div className="vs-top">
         <button className="vs-link" onClick={onBack}>← К моему графику</button>
-        <h1 className="vs-admin-title">Загрузка сотрудников</h1>
+        <h1 className="vs-admin-title">Сотрудники и приглашения</h1>
       </div>
 
       <p className="vs-muted vs-small vs-team-note">
@@ -104,7 +106,7 @@ export default function EmployeeImport({ onBack }: { onBack: () => void }) {
       {done && (
         <div className="vs-success">
           Загружено: новых сотрудников {done.created}, обновлено {done.updated}.
-          {done.created > 0 && " Новым сотрудникам созданы приглашения."}
+          {done.created > 0 && " Новым сотрудникам созданы приглашения — список ниже."}
         </div>
       )}
 
@@ -145,6 +147,8 @@ export default function EmployeeImport({ onBack }: { onBack: () => void }) {
           <ProblemTable rows={report.warnings} />
         </div>
       )}
+
+      <Invitations reloadKey={loaded} />
     </div>
   );
 }

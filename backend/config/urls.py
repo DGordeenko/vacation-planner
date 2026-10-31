@@ -12,7 +12,10 @@ from schedule.team import (
 from audit.views import AuditLogViewSet
 from company.views import HolidayAdminViewSet
 
-from employees.views import AuthMeView, EmployeeImportView, InvitationAcceptView, LoginView
+from employees.views import (
+    AuthMeView, EmployeeImportView, InvitationAcceptView, InvitationListView,
+    InvitationReissueView, LoginView,
+)
 from sso.views import (
     AuthMethodsView,
     NegotiateView,
@@ -66,6 +69,9 @@ urlpatterns = [
     path("api/v1/auth/accept-invitation/", InvitationAcceptView.as_view()),
     path("api/v1/employees/search/", EmployeeSearchView.as_view()),
     path("api/v1/employees/import-csv/", EmployeeImportView.as_view()),
+    path("api/v1/admin/invitations/", InvitationListView.as_view()),
+    path("api/v1/admin/invitations/<uuid:employee_id>/reissue/",
+         InvitationReissueView.as_view()),
     path("api/v1/employees/<uuid:employee_id>/balance/", BalanceView.as_view()),
     path("api/v1/employees/<uuid:employee_id>/time-off-balance/",
          TimeOffBalanceView.as_view()),

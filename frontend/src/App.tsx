@@ -26,7 +26,10 @@ function bestContrast(hex: string) {
 }
 
 export default function App() {
-  const [authorized, setAuthorized] = useState(Boolean(restoreToken()));
+  // Ссылка-приглашение открывает экран задания пароля, даже если в этом
+  // браузере уже кто-то вошёл: иначе ссылка молча откроет чужой график.
+  const [authorized, setAuthorized] = useState(
+    () => Boolean(restoreToken()) && !new URLSearchParams(window.location.search).has("invite"));
   const [me, setMe] = useState<Me | null>(null);
   const [branding, setBranding] = useState<Branding | null>(null);
   const [summary, setSummary] = useState<AnnualSummary | null>(null);
