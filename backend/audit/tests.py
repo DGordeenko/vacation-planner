@@ -238,3 +238,43 @@ class AuditTrailTests(AuditBase):
                                 action=AuditLog.Action.UPDATE).last()
         self.assertEqual(decision.changed_by_name, "Руководитель")
         self.assertIn("Утверждаю", str(decision.diff))
+
+
+class AuditScreenTests(AuditBase):
+    """Экран журнала: изменения читаются человеком, фильтр по периоду."""
+
+    def entries(self, **params):
+        self.client.force_authenticate(self.admin)
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        return self.client.get(f"/api/v1/audit-log/?{query}").json()["results"]
+
+    def test_update_shows_labels_and_names_instead_of_ids(self):
+        with acting_as(self.admin, source="api"):
+            self.employee.org_unit = self.department
+            self.employee.save()
+        row = self.entries(entity_type="Employee", action="update")[0]
+        self.assertEqual(row["entity_type_display"], "Сотрудник")
+        change = next(c for c in row["changes"] if c["field"] == "org_unit")
+        self.assertEqual((change["was"], change["became"]), ("Группа А (Группа)", "Отдел А (Отдел)"))
+        self.assertNotEqual(change["label"], "org_unit")
+
+    def test_create_lists_filled_fields_only(self):
+        with acting_as(self.admin, source="api"):
+            Holiday.objects.create(date=date(2027, 1, 7), name="Рождество")
+        row = self.entries(entity_type="Holiday", action="create")[0]
+        fields = {c["field"] for c in row["changes"]}
+        self.assertIn("name", fields)
+        self.assertNotIn("id", fields)
+        self.assertTrue(all(c["was"] is None for c in row["changes"]))
+
+    def test_until_is_inclusive(self):
+        with acting_as(self.admin, source="api"):
+            Holiday.objects.create(date=date(2027, 1, 7), name="Рождество")
+        today = date.today().isoformat()
+        self.assertEqual(len(self.entries(entity_type="Holiday", until=today)), 1)
+        self.assertEqual(len(self.entries(entity_type="Holiday", until="2000-01-01")), 0)
+
+    def test_entity_types_for_filter(self):
+        self.client.force_authenticate(self.admin)
+        codes = {t["code"] for t in self.client.get("/api/v1/audit-log/entity-types/").json()}
+        self.assertTrue({"Employee", "ScheduleEntry", "Holiday"} <= codes)
