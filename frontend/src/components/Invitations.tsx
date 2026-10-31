@@ -68,10 +68,23 @@ export default function Invitations({ reloadKey }: { reloadKey: number }) {
   }
 
   async function reissue(row: Invitation) {
+    const request = employeesAdminApi.reissueInvitation(row.employee_id);
+    // Safari разрешает запись в буфер только в самом обработчике нажатия,
+    // а не после ожидания ответа сервера. ClipboardItem с обещанием
+    // запускает запись сразу, а текст подставляет, когда ссылка готова.
+    let copiedNow = false;
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+      const blob = request.then((fresh) =>
+        new Blob([inviteLink(fresh.invitation_token)], { type: "text/plain" }));
+      navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })])
+        .then(() => flash(row.employee_id))
+        .catch(() => undefined);
+      copiedNow = true;
+    }
     try {
-      const fresh = await employeesAdminApi.reissueInvitation(row.employee_id);
+      const fresh = await request;
       setRows((list) => (list ?? []).map((r) => (r.employee_id === fresh.employee_id ? fresh : r)));
-      await copy(inviteLink(fresh.invitation_token), fresh.employee_id);
+      if (!copiedNow) await copy(inviteLink(fresh.invitation_token), fresh.employee_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось выдать новую ссылку");
     }
