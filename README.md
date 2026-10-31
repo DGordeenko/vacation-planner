@@ -153,7 +153,7 @@ npm run dev                       # http://localhost:5173
 
 ```bash
 cd backend && pip install -r requirements-dev.txt
-cd backend && ruff check . && python manage.py test        # 430 тестов
+cd backend && ruff check . && python manage.py test        # 434 тестов
 cd frontend && npm run lint && npx tsc -b && npm run build
 ```
 

@@ -42,6 +42,13 @@ if is_true "${DEMO_MODE_ENABLED:-0}" && is_true "${DEMO_LOAD_ON_START:-1}"; then
     fi
 fi
 
+# Ежедневный сброс демо (по умолчанию в полночь, DEMO_RESET_TIME=ЧЧ:ММ):
+# фоновый процесс рядом с gunicorn. DEMO_RESET_DAILY=0 — выключить, например
+# при общей демо-базе на несколько реплик: там сброс — отдельный CronJob.
+if is_true "${DEMO_MODE_ENABLED:-0}" && is_true "${DEMO_RESET_DAILY:-1}"; then
+    python manage.py demo_reset_daily &
+fi
+
 exec gunicorn config.wsgi:application \
     --bind "0.0.0.0:${PORT:-8000}" \
     --workers "${GUNICORN_WORKERS:-3}" \

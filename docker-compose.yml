@@ -37,6 +37,8 @@ services:
       DEMO_MODE_ENABLED: ${DEMO_MODE_ENABLED:-False}
       DEMO_DATABASE_URL: ${DEMO_DATABASE_URL:-}
       DEMO_LOAD_ON_START: ${DEMO_LOAD_ON_START:-1}
+      DEMO_RESET_DAILY: ${DEMO_RESET_DAILY:-1}
+      DEMO_RESET_TIME: ${DEMO_RESET_TIME:-00:00}
     depends_on:
       postgres:
         condition: service_healthy
