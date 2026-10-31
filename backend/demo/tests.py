@@ -276,7 +276,7 @@ class EntrypointTests(SimpleTestCase):
     заглушки, которые только записывают, с чем их вызвали. Заглушка python
     завершается ошибкой, если в аргументах есть FAIL_ON."""
 
-    def run_entrypoint(self, fail_on="", **env):
+    def run_entrypoint(self, fail_on="", args=(), **env):
         script = Path(__file__).resolve().parent.parent / "entrypoint.sh"
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp) / "calls.log"
@@ -288,7 +288,7 @@ class EntrypointTests(SimpleTestCase):
                     f'case "$*" in *"{fail_on or "<never>"}"*) exit 1 ;; esac\n')
                 stub.chmod(0o755)
             result = subprocess.run(
-                ["sh", str(script)], capture_output=True, text=True,
+                ["sh", str(script), *args], capture_output=True, text=True,
                 env={"PATH": f"{tmp}:/usr/bin:/bin", **env})
             self.stderr = result.stderr
             self.returncode = result.returncode
@@ -412,3 +412,23 @@ class DailyResetScheduleTests(SimpleTestCase):
         self.assertEqual(parse_reset_time("03:30"), time(3, 30))
         with self.assertRaises(ValueError):
             parse_reset_time("полночь")
+
+
+class EntrypointCommandsTests(SimpleTestCase):
+    """Команда вместо веб-сервера (cron-сервис Railway, CronJob) и почта."""
+
+    # Те же заглушки, что в EntrypointTests, без повторного запуска его тестов.
+    run_entrypoint = EntrypointTests.run_entrypoint
+    gunicorn_started = EntrypointTests.gunicorn_started
+
+    def test_command_runs_without_migrations_or_gunicorn(self):
+        calls = self.run_entrypoint(args=("python", "manage.py", "send_mail_queue"))
+        self.assertEqual(calls, ["python manage.py send_mail_queue"])
+
+    def test_mail_scheduler_only_when_mail_enabled(self):
+        self.assertNotIn("python manage.py mail_scheduler", self.run_entrypoint())
+        calls = self.run_entrypoint(MAIL_NOTIFICATIONS_ENABLED="True")
+        self.assertIn("python manage.py mail_scheduler", calls)
+        self.assertTrue(self.gunicorn_started(calls))
+        self.assertNotIn("python manage.py mail_scheduler", self.run_entrypoint(
+            MAIL_NOTIFICATIONS_ENABLED="True", MAIL_SCHEDULER="0"))

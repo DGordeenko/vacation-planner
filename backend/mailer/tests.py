@@ -4,7 +4,7 @@ from datetime import date
 from unittest.mock import patch
 
 from django.core import mail
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.test import APIClient
 
 from company.models import CompanySettings
@@ -246,3 +246,19 @@ class IntegrationTests(MailerBase):
         digest = OutgoingEmail.objects.filter(kind=OutgoingEmail.Kind.DIGEST)
         self.assertEqual(digest.count(), 1)
         self.assertEqual(digest.first().recipient_email, "user@corp.ru")
+
+
+class MailScheduleTests(SimpleTestCase):
+    """Сводка — по будням в заданное время по Москве."""
+
+    def test_next_digest_skips_weekend(self):
+        from datetime import datetime, time
+        from zoneinfo import ZoneInfo
+
+        from mailer.schedule import next_digest
+        tz = ZoneInfo("Europe/Moscow")
+        friday_evening = datetime(2026, 10, 30, 18, 0, tzinfo=tz)
+        self.assertEqual(next_digest(friday_evening, time(9, 0), tz).day, 2)  # понедельник
+        monday_early = datetime(2026, 11, 2, 8, 0, tzinfo=tz)
+        self.assertEqual(next_digest(monday_early, time(9, 0), tz),
+                         datetime(2026, 11, 2, 9, 0, tzinfo=tz))
