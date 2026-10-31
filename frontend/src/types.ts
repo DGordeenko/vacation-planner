@@ -186,6 +186,36 @@ export interface EmployeeImportReport {
   warnings: ImportProblem[];
 }
 
+export interface AuditChange {
+  field: string;
+  label: string;
+  was: unknown;
+  became: unknown;
+}
+
+export interface AuditRow {
+  id: string;
+  entity_type: string;
+  entity_type_display: string;
+  entity_id: string | null;
+  entity_label: string;
+  action: "create" | "update" | "delete";
+  action_display: string;
+  changed_by: string | null;
+  changed_by_name: string;
+  subject_employee: string | null;
+  subject_name: string | null;
+  changed_at: string;
+  diff: Record<string, unknown>;
+  changes: AuditChange[];
+  source: string;
+}
+
+export interface AuditEntityType {
+  code: string;
+  name: string;
+}
+
 export interface CalendarImpact {
   year: number;
   affected_entries: number;

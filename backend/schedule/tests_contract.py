@@ -298,3 +298,31 @@ class InvitationContractTests(TestCase):
         client.force_authenticate(admin)
         rows = client.get("/api/v1/admin/invitations/").json()
         self.assertEqual(INVITATION_FIELDS, set(rows[0]))
+
+
+# types.ts: AuditRow, AuditChange, AuditEntityType
+AUDIT_ROW_FIELDS = {"id", "entity_type", "entity_type_display", "entity_id", "entity_label",
+                    "action", "action_display", "changed_by", "changed_by_name",
+                    "subject_employee", "subject_name", "changed_at", "diff", "changes",
+                    "source"}
+
+
+class AuditContractTests(TestCase):
+    def test_audit_contract(self):
+        from audit.context import acting_as
+        from company.models import Holiday
+        admin = Employee.objects.create_user(
+            email="a@i.ru", employee_number="1", full_name="А", hire_date=date(2015, 1, 1))
+        admin.is_admin = True
+        admin.save()
+        with acting_as(admin, source="api"):
+            Holiday.objects.create(date=date(2027, 1, 7), name="Рождество")
+        client = APIClient()
+        client.force_authenticate(admin)
+        body = client.get("/api/v1/audit-log/?entity_type=Holiday").json()
+        self.assertEqual({"count", "next", "previous", "results"}, set(body))
+        self.assertEqual(AUDIT_ROW_FIELDS, set(body["results"][0]))
+        self.assertEqual({"field", "label", "was", "became"},
+                         set(body["results"][0]["changes"][0]))
+        self.assertEqual({"code", "name"},
+                         set(client.get("/api/v1/audit-log/entity-types/").json()[0]))

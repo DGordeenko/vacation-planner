@@ -6,7 +6,7 @@
 */
 
 import type {
-  AnnualSummary, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
+  AnnualSummary, AuditEntityType, AuditRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
   DemoRoleCode, EmployeeBrief, EmployeeImportReport, Invitation, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
   TeamEntryDetail, TeamScope,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
@@ -234,6 +234,24 @@ export const employeesAdminApi = {
       method: "POST",
       body: JSON.stringify({ content: contentBase64, dry_run: dryRun }),
     }),
+};
+
+export interface AuditFilter {
+  entity_type?: string;
+  action?: string;
+  employee_id?: string;
+  since?: string;
+  until?: string;
+}
+
+/** Журнал изменений: что видно, решает сервер; клиент только фильтрует запрос. */
+export const auditApi = {
+  list: (filter: AuditFilter, page: number) => {
+    const params = new URLSearchParams({ page: String(page) });
+    Object.entries(filter).forEach(([k, v]) => { if (v) params.set(k, v); });
+    return request<Paginated<AuditRow>>(`/audit-log/?${params}`);
+  },
+  entityTypes: () => request<AuditEntityType[]>("/audit-log/entity-types/"),
 };
 
 export const adminApi = {
