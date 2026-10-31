@@ -6,7 +6,7 @@
 */
 
 import type {
-  AnnualSummary, AuditEntityType, AuditRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
+  AnnualSummary, AuditEntityType, AuditRow, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
   DemoRoleCode, EmployeeBrief, EmployeeImportReport, Invitation, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
   TeamEntryDetail, TeamScope,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
@@ -252,6 +252,19 @@ export const auditApi = {
     return request<Paginated<AuditRow>>(`/audit-log/?${params}`);
   },
   entityTypes: () => request<AuditEntityType[]>("/audit-log/entity-types/"),
+};
+
+/** Настройки компании, пороги правил и оформление (релиз 1.2). */
+export const settingsApi = {
+  get: () => request<CompanySettingsRow>("/settings/"),
+  save: (patch: Partial<CompanySettingsRow>) =>
+    request<CompanySettingsRow>("/settings/", { method: "PATCH", body: JSON.stringify(patch) }),
+  rules: () => request<Paginated<ValidationRuleRow>>("/validation-rules/?page_size=100"),
+  saveRule: (code: string, patch: Partial<ValidationRuleRow>) =>
+    request<ValidationRuleRow>(`/validation-rules/${code}/`,
+      { method: "PATCH", body: JSON.stringify(patch) }),
+  saveBranding: (patch: Partial<Branding>) =>
+    request<Branding>("/settings/branding/", { method: "PATCH", body: JSON.stringify(patch) }),
 };
 
 export const adminApi = {

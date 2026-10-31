@@ -596,3 +596,25 @@ body {
 @media (max-width: 720px) {
   .vs-audit-line { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* Настройки */
+.vs-settings { display: grid; gap: 14px; }
+.vs-settings-section { display: grid; gap: 12px; }
+.vs-settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 20px; }
+.vs-settings-foot { display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+.vs-field-error { color: var(--alert); font-size: 12px; }
+.vs-rules { display: grid; }
+.vs-rule { display: grid; grid-template-columns: minmax(0, 1fr) 140px; gap: 6px 16px;
+  align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.vs-rule.off .vs-rule-name { color: var(--muted); }
+.vs-rule-switch > span { display: grid; gap: 2px; }
+.vs-rule-name { font-weight: 500; font-size: 13.5px; }
+.vs-rule-desc { display: block; }
+.vs-rule-threshold { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.vs-rule-threshold input { width: 72px; }
+.vs-rule-error { grid-column: 1 / -1; }
+.vs-colour { display: flex; gap: 8px; align-items: center; }
+.vs-colour input[type=color] { width: 40px; height: 34px; padding: 2px; }
+.vs-colour input:not([type=color]) { width: 100px; }
+.vs-colour-sample { color: #fff; padding: 7px 12px; border-radius: 8px; font-size: 13px; }
+@media (max-width: 640px) { .vs-rule { grid-template-columns: 1fr; } .vs-rule-threshold { justify-content: flex-start; } }
