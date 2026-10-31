@@ -7,7 +7,7 @@
 
 import type {
   Absence, AbsenceReason, AbsenceSummary, AnnualSummary, AuditEntityType, AuditRow, CheckResult,
-  RvdCompensation, RvdRow, TimeOffBalance, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
+  RvdCompensation, RvdRow, RvdTrackingOverrides, TimeOffBalance, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
   DemoRoleCode, EmployeeBrief, EmployeeImportReport, Invitation, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
   TeamEntryDetail, TeamScope,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
@@ -272,6 +272,10 @@ export const settingsApi = {
   saveRule: (code: string, patch: Partial<ValidationRuleRow>) =>
     request<ValidationRuleRow>(`/validation-rules/${code}/`,
       { method: "PATCH", body: JSON.stringify(patch) }),
+  rvdTracking: () => request<RvdTrackingOverrides>("/settings/rvd-tracking/"),
+  setRvdTracking: (kind: "unit" | "employee", id: string, value: boolean | null) =>
+    request<RvdTrackingOverrides>("/settings/rvd-tracking/",
+      { method: "POST", body: JSON.stringify({ kind, id, value }) }),
   saveBranding: (patch: Partial<Branding>) =>
     request<Branding>("/settings/branding/", { method: "PATCH", body: JSON.stringify(patch) }),
 };
@@ -305,7 +309,7 @@ export interface RvdInput {
   employee: string;
   date_from: string;
   work_hours: string;
-  rvd_compensation_type: RvdCompensation;
+  rvd_compensation_type: RvdCompensation | "";
   task_link: string;
 }
 
@@ -316,6 +320,8 @@ export const rvdApi = {
   create: (data: RvdInput) =>
     request<RvdRow>("/admin/rvd/", { method: "POST", body: JSON.stringify(data) }),
   remove: (id: string) => request<void>(`/admin/rvd/${id}/`, { method: "DELETE" }),
+  tracking: (employeeId: string) =>
+    request<{ tracked: boolean; source: string }>(`/admin/rvd/tracking/?employee_id=${employeeId}`),
 };
 
 export interface AbsenceInput {

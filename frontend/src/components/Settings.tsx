@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { ApiError, settingsApi } from "../api";
-import type { Branding, CompanySettingsRow, ValidationRuleRow } from "../types";
+import { ApiError, settingsApi, tagsApi } from "../api";
+import type {
+  Branding, CompanySettingsRow, EmployeeBrief, RvdTrackingOverrides, ValidationRuleRow,
+} from "../types";
 
 /** Ошибки полей из ответа сервера: и вида {errors: {...}}, и DRF {field: [...]}. */
 function fieldErrors(err: unknown): Record<string, string> {
@@ -35,6 +37,7 @@ export default function Settings({ branding, onBack, onBrandingChanged }: {
       </div>
       <div className="vs-settings">
         <CompanySection />
+        <RvdTrackingSection />
         <RulesSection />
         <BrandingSection branding={branding} onChanged={onBrandingChanged} />
       </div>
@@ -275,5 +278,131 @@ function BrandingSection({ branding, onChanged }: { branding: Branding; onChange
         </button>
       </div>
     </section>
+  );
+}
+
+function choice(value: boolean | null) {
+  return value === null ? "" : value ? "on" : "off";
+}
+
+function parseChoice(raw: string): boolean | null {
+  return raw === "" ? null : raw === "on";
+}
+
+/** Учёт компенсации РВД: частное важнее общего — сотрудник, затем
+    подразделение вверх по структуре, затем компания. */
+function RvdTrackingSection() {
+  const [data, setData] = useState<RvdTrackingOverrides | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [unitId, setUnitId] = useState("");
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState<EmployeeBrief[]>([]);
+
+  useEffect(() => {
+    settingsApi.rvdTracking().then(setData).catch((err) => setError(message(err)));
+  }, []);
+
+  useEffect(() => {
+    if (query.trim().length < 2) { setFound([]); return; }
+    const timer = window.setTimeout(() => {
+      tagsApi.searchEmployees(query.trim()).then(setFound).catch(() => setFound([]));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  async function set(kind: "unit" | "employee", id: string, value: boolean | null) {
+    setError(null);
+    try {
+      setData(await settingsApi.setRvdTracking(kind, id, value));
+    } catch (err) {
+      setError(message(err));
+    }
+  }
+
+  if (!data) return <section className="vs-card">{error ?? "Загружаем…"}</section>;
+  const overridden = data.units.filter((u) => u.value !== null);
+  const free = data.units.filter((u) => u.value === null);
+
+  return (
+    <section className="vs-card vs-settings-section">
+      <h2 className="vs-section-title">Учёт компенсации РВД: исключения</h2>
+      <p className="vs-muted vs-small">
+        Общая настройка компании — «{data.company ? "учитывать" : "не учитывать"}» (галочка выше).
+        Подразделению или сотруднику можно задать иначе: настройка сотрудника важнее
+        подразделения, подразделение — важнее вышестоящего и компании. Когда учёт
+        выключен, при вводе РВД вид компенсации не спрашивается и часы отгула
+        не начисляются.
+      </p>
+      {error && <div className="vs-error vs-error-inline">{error}</div>}
+
+      {(overridden.length > 0 || data.employees.length > 0) && (
+        <table className="vs-table">
+          <tbody>
+            {overridden.map((u) => (
+              <tr key={u.id}>
+                <td>{u.path}<div className="vs-muted vs-small">подразделение</div></td>
+                <td className="vs-override-cell">
+                  <OverrideSelect value={u.value} onChange={(v) => set("unit", u.id, v)} />
+                </td>
+              </tr>
+            ))}
+            {data.employees.map((e) => (
+              <tr key={e.id}>
+                <td>{e.name}<div className="vs-muted vs-small">сотрудник{e.org_unit ? ` · ${e.org_unit}` : ""}</div></td>
+                <td className="vs-override-cell">
+                  <OverrideSelect value={e.value} onChange={(v) => set("employee", e.id, v)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div className="vs-timeoff-form">
+        <label className="vs-field vs-override-pick">
+          Добавить подразделение
+          <select value={unitId} onChange={(e) => setUnitId(e.target.value)}>
+            <option value="">Выберите…</option>
+            {free.map((u) => <option key={u.id} value={u.id}>{u.path}</option>)}
+          </select>
+        </label>
+        <button className="vs-btn" disabled={!unitId}
+          onClick={() => { void set("unit", unitId, !data.company); setUnitId(""); }}>
+          {data.company ? "Не учитывать" : "Учитывать"}
+        </button>
+        <div className="vs-field vs-audit-person">
+          Добавить сотрудника
+          <input value={query} placeholder="ФИО или табельный" onChange={(e) => setQuery(e.target.value)} />
+          {found.length > 0 && (
+            <ul className="vs-list vs-found vs-audit-found">
+              {found.slice(0, 8).map((e) => (
+                <li key={e.id}>
+                  <button className="vs-item vs-found-item" onClick={() => {
+                    void set("employee", e.id, !data.company); setQuery(""); setFound([]);
+                  }}>
+                    <span>{e.full_name}</span>
+                    <span className="vs-muted vs-small">{e.org_unit ?? ""}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function OverrideSelect({ value, onChange }: {
+  value: boolean | null;
+  onChange: (value: boolean | null) => void;
+}) {
+  return (
+    <select value={choice(value)} onChange={(e) => onChange(parseChoice(e.target.value))}
+      aria-label="Учёт компенсации">
+      <option value="on">Учитывать</option>
+      <option value="off">Не учитывать</option>
+      <option value="">Как выше (убрать исключение)</option>
+    </select>
   );
 }
