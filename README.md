@@ -178,6 +178,8 @@ cd frontend && npx tsc -b && npm run build
 | `DEMO_MODE_ENABLED` | Кнопка «Демо-режим» на экране входа. По умолчанию выключено |
 | `DEMO_DATABASE_URL`, `DEMO_LOAD_ON_START` | Отдельная база демо (по умолчанию SQLite в контейнере) и загрузка при старте. Подробно — `docs/15-demo-mode.md` |
 
+Резервное копирование — сервис `backup` в `docker-compose.yml`, копии в `./backups`; восстановление и другие площадки — `docs/16-backups.md`.
+
 Доменная аутентификация — `docs/11-sso-setup.md`,
 почтовые уведомления — `docs/12-mail-setup.md`.
 
