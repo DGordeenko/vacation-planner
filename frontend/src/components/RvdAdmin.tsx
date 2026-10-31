@@ -120,7 +120,7 @@ export default function RvdAdmin({ onBack }: { onBack: () => void }) {
                     <td>{row.employee_name}<div className="vs-muted vs-small">{row.employee_number}</div></td>
                     <td className="vs-nowrap">{fmt(row.date_from)} <span className="vs-muted">{weekdayName(row.date_from)}</span></td>
                     <td>{Number(row.work_hours).toLocaleString("ru-RU")}</td>
-                    <td>{row.compensation_display}</td>
+                    <td>{row.compensation_display || <span className="vs-muted">не учитывается</span>}</td>
                     <td className="vs-rvd-link">
                       {row.task_link
                         ? <a href={row.task_link} target="_blank" rel="noreferrer">{row.task_link.replace(/^https?:\/\//, "")}</a>
@@ -141,7 +141,7 @@ export default function RvdAdmin({ onBack }: { onBack: () => void }) {
   );
 }
 
-const EMPTY = { date_from: "", work_hours: "8", rvd_compensation_type: "pay_plus_day_off" as RvdCompensation, task_link: "" };
+const EMPTY = { date_from: "", work_hours: "8", rvd_compensation_type: "pay_plus_day_off" as RvdCompensation | "", task_link: "" };
 
 function RvdForm({ onSaved }: { onSaved: (year: number, month: number) => void }) {
   const [person, setPerson] = useState<EmployeeBrief | null>(null);
@@ -152,6 +152,15 @@ function RvdForm({ onSaved }: { onSaved: (year: number, month: number) => void }
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  // Учёт компенсации — настройка компании, подразделения или сотрудника;
+  // какая действует, решает сервер.
+  const [tracking, setTracking] = useState<{ tracked: boolean; source: string } | null>(null);
+
+  useEffect(() => {
+    setTracking(null);
+    if (!person) return;
+    rvdApi.tracking(person.id).then(setTracking).catch(() => setTracking(null));
+  }, [person]);
   const year = form.date_from ? Number(form.date_from.slice(0, 4)) : null;
 
   useEffect(() => {
@@ -171,7 +180,8 @@ function RvdForm({ onSaved }: { onSaved: (year: number, month: number) => void }
     if (!person) return;
     setBusy(true); setErrors({}); setDone(null);
     try {
-      const data: RvdInput = { employee: person.id, ...form };
+      const data: RvdInput = { employee: person.id, ...form,
+        rvd_compensation_type: tracking?.tracked === false ? "" : form.rvd_compensation_type };
       const row = await rvdApi.create(data);
       setDone(`${row.employee_name}: ${fmt(row.date_from)}, ${Number(row.work_hours)} ч — внесено.`);
       // Сотрудника оставляем: обычно вносят несколько выходных одного человека подряд.
@@ -235,28 +245,42 @@ function RvdForm({ onSaved }: { onSaved: (year: number, month: number) => void }
             onChange={(e) => setForm((f) => ({ ...f, work_hours: e.target.value }))} />
           {errors.work_hours && <span className="vs-field-error">{errors.work_hours}</span>}
         </label>
-        <label className="vs-field">
-          Компенсация
-          <select value={form.rvd_compensation_type}
-            onChange={(e) => setForm((f) => ({ ...f, rvd_compensation_type: e.target.value as RvdCompensation }))}>
-            <option value="pay_plus_day_off">Оплата + отгул</option>
-            <option value="double_pay">Двойная оплата</option>
-          </select>
-        </label>
+        {tracking?.tracked === false ? (
+          <div className="vs-field">
+            Компенсация
+            <span className="vs-muted vs-small vs-rvd-untracked">
+              Не учитывается ({tracking.source === "компания" ? "настройка компании"
+                : tracking.source === "сотрудник" ? "настройка сотрудника"
+                : `настройка подразделения «${tracking.source}»`})
+            </span>
+          </div>
+        ) : (
+          <label className="vs-field">
+            Компенсация
+            <select value={form.rvd_compensation_type}
+              onChange={(e) => setForm((f) => ({ ...f, rvd_compensation_type: e.target.value as RvdCompensation }))}>
+              <option value="pay_plus_day_off">Оплата + отгул</option>
+              <option value="double_pay">Двойная оплата</option>
+            </select>
+            {errors.rvd_compensation_type && <span className="vs-field-error">{errors.rvd_compensation_type}</span>}
+          </label>
+        )}
         <label className="vs-field vs-rvd-task">
-          Ссылка на задачу
-          <input value={form.task_link} placeholder="https://tracker/TASK-1"
+          Ссылка на задачу *
+          <input value={form.task_link} placeholder="https://tracker/TASK-1" required
             onChange={(e) => setForm((f) => ({ ...f, task_link: e.target.value }))} />
           {errors.task_link && <span className="vs-field-error">{errors.task_link}</span>}
         </label>
-        <button className="vs-btn primary" disabled={!person || !form.date_from || busy} onClick={save}>
+        <button className="vs-btn primary"
+          disabled={!person || !form.date_from || !form.task_link.trim() || Boolean(weekday) || busy}
+          onClick={save}>
           {busy ? "Сохраняем…" : "Внести"}
         </button>
       </div>
       {weekday && (
         <div className="vs-note">
           {fmt(form.date_from)} — рабочий день по производственному календарю.
-          РВД — работа в выходной или праздник; проверьте дату.
+          РВД вносится только на выходной или праздник.
         </div>
       )}
       {errors.non_field_errors && <div className="vs-error vs-error-inline">{errors.non_field_errors}</div>}

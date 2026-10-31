@@ -610,6 +610,35 @@ def workday_hours() -> Decimal:
     return CompanySettings.get_solo().workday_hours
 
 
+def is_rest_day(day: date) -> bool:
+    """Нерабочий ли день по производственному календарю.
+
+    Праздник — нерабочий в любой день недели; перенесённый рабочий день
+    в субботу — рабочий; сокращённый предпраздничный — рабочий.
+    """
+    special = Holiday.objects.filter(date=day).first()
+    if special is not None:
+        return special.day_type == Holiday.DayType.HOLIDAY
+    return day.weekday() in (SATURDAY, SUNDAY)
+
+
+def rvd_compensation_tracked(employee: Employee) -> bool:
+    """Ведётся ли учёт компенсации РВД для сотрудника (ФЗ, раздел РВД).
+
+    Частное важнее общего: настройка сотрудника, затем ближайшей оргединицы
+    вверх по структуре, затем общая настройка компании. Пустое значение
+    на уровне означает «как выше».
+    """
+    if employee.rvd_compensation_tracking_override is not None:
+        return employee.rvd_compensation_tracking_override
+    unit = employee.org_unit
+    while unit is not None:
+        if unit.rvd_compensation_tracking_override is not None:
+            return unit.rvd_compensation_tracking_override
+        unit = unit.parent
+    return CompanySettings.get_solo().rvd_compensation_tracking_enabled
+
+
 def time_off_balance_hours(employee: Employee, on_date: date = None) -> Decimal:
     """Остаток часов отгула.
 

@@ -147,7 +147,9 @@ class ExceptionApprovalSerializer(serializers.ModelSerializer):
 
 
 class RvdSerializer(serializers.ModelSerializer):
-    task_link = TaskLinkField()
+    # По ФЗ ссылка на задачу у РВД обязательна (решение от 31.10.2026).
+    task_link = TaskLinkField(required=True, allow_blank=False, error_messages={
+        "required": "Укажите ссылку на задачу", "blank": "Укажите ссылку на задачу"})
     employee_name = serializers.CharField(source="employee.full_name", read_only=True)
     employee_number = serializers.CharField(
         source="employee.employee_number", read_only=True)
@@ -167,10 +169,32 @@ class RvdSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("В сутках не больше 24 часов")
         return value
 
-    def validate_rvd_compensation_type(self, value):
-        if not value:
-            raise serializers.ValidationError("Укажите тип оплаты")
-        return value
+    rvd_compensation_type = serializers.ChoiceField(
+        choices=ScheduleEntry.RvdCompensation.choices, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        from schedule import calculations
+
+        employee = attrs.get("employee") or getattr(self.instance, "employee", None)
+        day = attrs.get("date_from") or getattr(self.instance, "date_from", None)
+        errors = {}
+        # РВД — работа в выходной или праздник; на рабочий день это ошибка
+        # ввода (решение от 31.10.2026).
+        if day and not calculations.is_rest_day(day):
+            errors["date_from"] = (f"{day:%d.%m.%Y} — рабочий день по производственному "
+                                   "календарю. РВД вносится на выходной или праздник")
+        if employee:
+            tracked = calculations.rvd_compensation_tracked(employee)
+            compensation = attrs.get("rvd_compensation_type",
+                                     getattr(self.instance, "rvd_compensation_type", ""))
+            if tracked and not compensation:
+                errors["rvd_compensation_type"] = "Укажите вид компенсации"
+            if not tracked:
+                # Учёт компенсации выключен: вид не хранится, отгул не начисляется.
+                attrs["rvd_compensation_type"] = ""
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
 
 class AbsenceReasonSerializer(serializers.ModelSerializer):

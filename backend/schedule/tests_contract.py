@@ -418,7 +418,8 @@ class RvdContractTests(TestCase):
         client.force_authenticate(admin)
         created = client.post("/api/v1/admin/rvd/", {
             "employee": str(admin.id), "date_from": "2026-10-24", "work_hours": "8",
-            "rvd_compensation_type": "pay_plus_day_off"}, format="json").json()
+            "rvd_compensation_type": "pay_plus_day_off",
+            "task_link": "https://jira/OPS-1"}, format="json").json()
         self.assertEqual(RVD_FIELDS, set(created))
         listed = client.get("/api/v1/admin/rvd/?year=2026&month=10").json()
         self.assertEqual(RVD_FIELDS, set(listed["results"][0]))

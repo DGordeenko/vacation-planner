@@ -705,3 +705,7 @@ body {
   .vs-invites-head .vs-decision-actions { margin-left: 0; }
   .vs-bell-panel { position: fixed; left: 16px; right: 16px; top: 64px; width: auto; }
 }
+.vs-rvd-untracked { padding: 9px 0; }
+.vs-override-cell { text-align: right; width: 1%; white-space: nowrap; }
+.vs-override-pick { flex: 1 1 260px; }
+.vs-override-cell select, .vs-override-pick select { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }

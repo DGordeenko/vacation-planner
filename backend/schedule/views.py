@@ -535,6 +535,24 @@ class RvdAdminViewSet(viewsets.ModelViewSet):
         entry = serializer.save()
         calculations.sync_rvd_accrual(entry)
 
+    @action(detail=False, methods=["get"], url_path="tracking")
+    def tracking(self, request):
+        """Ведётся ли учёт компенсации для сотрудника и чья настройка действует —
+        форма ввода скрывает выбор компенсации, когда учёт выключен."""
+        employee = get_object_or_404(Employee, id=request.query_params.get("employee_id"))
+        source = "компания"
+        if employee.rvd_compensation_tracking_override is not None:
+            source = "сотрудник"
+        else:
+            unit = employee.org_unit
+            while unit is not None:
+                if unit.rvd_compensation_tracking_override is not None:
+                    source = unit.name
+                    break
+                unit = unit.parent
+        return Response({"tracked": calculations.rvd_compensation_tracked(employee),
+                         "source": source})
+
     @action(detail=False, methods=["post"], url_path="bulk")
     def bulk(self, request):
         """Ввод РВД сразу по нескольким сотрудникам за месяц."""
@@ -818,3 +836,63 @@ class AbsenceSummaryView(APIView):
         employee = get_object_or_404(Employee, id=employee_id)
         year = int(request.query_params.get("year") or date.today().year)
         return Response(calculations.absence_summary(employee, year))
+
+
+class RvdTrackingOverridesView(APIView):
+    """Исключения из общей настройки учёта компенсации РВД (ФЗ, раздел РВД).
+
+    GET — подразделения (все, для выбора) и действующие исключения сотрудников.
+    POST {kind: "unit"|"employee", id, value: true|false|null} — задать или
+    снять исключение; null — «как выше по структуре».
+    """
+
+    def _deny(self, request):
+        if not request.user.is_admin:
+            return Response({"detail": "Только администратор"}, status=status.HTTP_403_FORBIDDEN)
+        return None
+
+    def get(self, request):
+        denied = self._deny(request)
+        if denied:
+            return denied
+        from employees.models import OrgUnit
+
+        def path(unit):
+            names = []
+            while unit is not None:
+                names.append(unit.name)
+                unit = unit.parent
+            return " / ".join(reversed(names))
+
+        units = OrgUnit.objects.select_related("parent").all()
+        return Response({
+            "company": CompanySettings.get_solo().rvd_compensation_tracking_enabled,
+            "units": sorted(({"id": str(u.id), "name": u.name, "path": path(u),
+                              "value": u.rvd_compensation_tracking_override} for u in units),
+                            key=lambda r: r["path"]),
+            "employees": [{"id": str(e.id), "name": e.full_name,
+                           "org_unit": e.org_unit.name if e.org_unit else None,
+                           "value": e.rvd_compensation_tracking_override}
+                          for e in Employee.objects.filter(
+                              rvd_compensation_tracking_override__isnull=False)
+                          .select_related("org_unit").order_by("full_name")],
+        })
+
+    def post(self, request):
+        denied = self._deny(request)
+        if denied:
+            return denied
+        from employees.models import OrgUnit
+
+        kind, value = request.data.get("kind"), request.data.get("value")
+        if value is not None and not isinstance(value, bool):
+            return Response({"detail": "Значение: да, нет или как выше"},
+                            status=status.HTTP_400_BAD_REQUEST)
+        model = {"unit": OrgUnit, "employee": Employee}.get(kind)
+        if model is None:
+            return Response({"detail": "Укажите подразделение или сотрудника"},
+                            status=status.HTTP_400_BAD_REQUEST)
+        target = get_object_or_404(model, id=request.data.get("id"))
+        target.rvd_compensation_tracking_override = value
+        target.save(update_fields=["rvd_compensation_tracking_override"])
+        return self.get(request)

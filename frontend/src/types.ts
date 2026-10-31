@@ -224,6 +224,12 @@ export interface CompanySettingsRow {
   rvd_compensation_tracking_enabled: boolean;
 }
 
+export interface RvdTrackingOverrides {
+  company: boolean;
+  units: { id: string; name: string; path: string; value: boolean | null }[];
+  employees: { id: string; name: string; org_unit: string | null; value: boolean | null }[];
+}
+
 export interface ValidationRuleRow {
   code: string;
   name: string;
@@ -413,7 +419,8 @@ export interface RvdRow {
   date_from: string;
   /** DecimalField приходит строкой */
   work_hours: string;
-  rvd_compensation_type: RvdCompensation;
+  /** Пусто, если для сотрудника учёт компенсации выключен. */
+  rvd_compensation_type: RvdCompensation | "";
   compensation_display: string;
   task_link: string;
 }
