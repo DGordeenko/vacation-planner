@@ -153,7 +153,7 @@ npm run dev                       # http://localhost:5173
 
 ```bash
 cd backend && pip install -r requirements-dev.txt
-cd backend && ruff check . && python manage.py test        # 434 тестов
+cd backend && ruff check . && python manage.py test        # 437 тестов
 cd frontend && npm run lint && npx tsc -b && npm run build
 ```
 
@@ -188,9 +188,9 @@ cd frontend && npm run lint && npx tsc -b && npm run build
 
 Образы переносимые: порт и настройки берутся только из переменных окружения.
 
-**Kubernetes.** Миграции вынести из entrypoint (`RUN_MIGRATIONS=0`) в Job
-или initContainer — при нескольких репликах одновременный старт приводит
-к конкуренции. Пробы liveness и readiness вешаются на `/api/health/`.
+**Kubernetes.** Манифесты — `deploy/k8s/` (`kubectl apply -k deploy/k8s`):
+миграции отдельным Job, почта — CronJob, пробы на `/api/health/`. Пошагово —
+`docs/18-deploy-kubernetes.md`.
 
 **Railway.** По сервису на папку, PostgreSQL плагином (даёт `DATABASE_URL`).
 Поскольку сервисы получают разные домены, задать `VITE_API_BASE_URL`
