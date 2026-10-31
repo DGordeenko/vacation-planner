@@ -228,12 +228,18 @@ def import_employees(raw_bytes: bytes, dry_run: bool = False) -> ImportReport:
 
     _detect_cycles(parsed, report)
 
-    if report.problems or dry_run:
+    if report.problems:
         transaction.set_rollback(True)
         return report
 
+    # Пробный прогон выполняет загрузку целиком и откатывает её: так
+    # предпросмотр видит те же ошибки (линии подчинения, руководители
+    # подразделений) и те же счётчики, что и настоящая загрузка.
     with acting_as(get_actor_for_import(), source="import"):
-        return _apply(parsed, report)
+        report = _apply(parsed, report)
+    if dry_run:
+        transaction.set_rollback(True)
+    return report
 
 
 def get_actor_for_import():
