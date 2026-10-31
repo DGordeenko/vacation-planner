@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels: { app: vacation, component: backend }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: vacation, component: backend }
+  template:
+    metadata:
+      labels: { app: vacation, component: backend }
+    spec:
+      # USER в образе задан именем; runAsNonRoot проверяет только числовой UID,
+      # поэтому он указан явно (useradd --uid 1000 в backend/Dockerfile).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: backend
+          image: vacation-backend
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef: { name: vacation-config }
+            - secretRef: { name: vacation-secrets }
+          env:
+            - { name: PORT, value: "8000" }
+          readinessProbe:
+            httpGet: { path: /api/health/, port: 8000, httpHeaders: [{ name: Host, value: backend }] }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health/, port: 8000, httpHeaders: [{ name: Host, value: backend }] }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector: { app: vacation, component: backend }
+  ports:
+    - port: 8000
+      targetPort: 8000

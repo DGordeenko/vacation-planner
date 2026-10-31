@@ -45,6 +45,24 @@ EMAIL_USE_TLS = True
 
 ## 4. Расписание отправки
 
+**Docker Compose и Railway (одна реплика).** Ничего настраивать не нужно:
+при `MAIL_NOTIFICATIONS_ENABLED=True` контейнер бэкенда сам запускает рядом
+с веб-сервером процесс `mail_scheduler` — срочные письма каждые
+`MAIL_SEND_INTERVAL_MINUTES` минут (5), сводка по будням в `MAIL_DIGEST_TIME`
+(09:00 по Москве). Выключить — `MAIL_SCHEDULER=0`.
+
+**Kubernetes (несколько реплик).** `MAIL_SCHEDULER=0`, отправку выполняют
+CronJob `mail-urgent` и `mail-digest` из `deploy/k8s/cronjobs.yaml`.
+
+**Настройка SMTP** — переменные `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`,
+`EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL`, `APP_BASE_URL`
+(`.env.example`). Без `EMAIL_HOST` письма печатаются в журнал контейнера —
+удобно проверить содержимое до подключения почтового сервера. До версии 1.2
+эти переменные не читались: почту в контейнере включить было нельзя.
+
+Разовая отправка из образа: `docker compose run --rm backend python manage.py
+send_mail_queue`. Классический cron на сервере без контейнеров:
+
 ```bash
 # Срочные — каждые несколько минут
 */5 * * * * cd /opt/vacation/backend && python manage.py send_mail_queue

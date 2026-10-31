@@ -1,0 +1,21 @@
+# Развёртывание в Kubernetes: kubectl apply -k deploy/k8s
+# Порядок и подробности — docs/18-deploy-kubernetes.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: vacation
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - backend.yaml
+  - frontend.yaml
+  - ingress.yaml
+  - migrate-job.yaml
+  - cronjobs.yaml
+# Секрет vacation-secrets создаётся отдельно (secret.example.yaml), не из репозитория.
+images:
+  - name: vacation-backend
+    newName: registry.example.com/vacation/backend   # заменить на свой реестр
+    newTag: "1.2.0"
+  - name: vacation-frontend
+    newName: registry.example.com/vacation/frontend
+    newTag: "1.2.0"

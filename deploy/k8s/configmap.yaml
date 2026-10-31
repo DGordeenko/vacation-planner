@@ -1,0 +1,20 @@
+# Несекретные настройки бэкенда. Описание переменных — README.md, .env.example.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vacation-config
+data:
+  DEBUG: "False"
+  ALLOWED_HOSTS: "vacation.example.com,backend"          # домен приложения и имя сервиса
+  CSRF_TRUSTED_ORIGINS: "https://vacation.example.com"
+  APP_BASE_URL: "https://vacation.example.com"
+  # Несколько реплик: миграции — Job, почта и сброс демо — CronJob,
+  # поэтому фоновые процессы в самих подах выключены.
+  RUN_MIGRATIONS: "0"
+  MAIL_SCHEDULER: "0"
+  DEMO_RESET_DAILY: "0"
+  DEMO_MODE_ENABLED: "False"
+  MAIL_NOTIFICATIONS_ENABLED: "False"
+  EMAIL_PORT: "587"
+  EMAIL_USE_TLS: "True"
+  DEFAULT_FROM_EMAIL: "vacation@example.com"

@@ -1,0 +1,43 @@
+# Задачи по расписанию (docs/12-mail-setup.md, docs/16-backups.md).
+# Время — по Москве (spec.timeZone, Kubernetes 1.27+).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mail-urgent
+spec:
+  schedule: "*/5 * * * *"
+  timeZone: Europe/Moscow
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: mail
+              image: vacation-backend
+              args: ["python", "manage.py", "send_mail_queue"]
+              envFrom:
+                - configMapRef: { name: vacation-config }
+                - secretRef: { name: vacation-secrets }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mail-digest
+spec:
+  schedule: "0 9 * * 1-5"
+  timeZone: Europe/Moscow
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: mail
+              image: vacation-backend
+              args: ["python", "manage.py", "send_mail_queue", "--digest"]
+              envFrom:
+                - configMapRef: { name: vacation-config }
+                - secretRef: { name: vacation-secrets }

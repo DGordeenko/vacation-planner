@@ -90,7 +90,7 @@ CI зелёный на обоих событиях, команды в `CLAUDE.md
 
 ## Итерация 3. Kubernetes и Railway
 
-- **Kubernetes:** манифесты или Helm-чарт — Deployment на сервис, Service,
+- ~~**Kubernetes:**~~ сделано — `deploy/k8s/`, `docs/18-deploy-kubernetes.md`. Манифесты или Helm-чарт — Deployment на сервис, Service,
   Ingress, Secret и ConfigMap, пробы liveness и readiness на `/api/health/`.
   **Миграции вынести из entrypoint** в Job или initContainer: при нескольких
   репликах одновременный старт миграций приводит к конкуренции.
