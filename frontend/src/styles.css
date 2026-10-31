@@ -568,3 +568,31 @@ body {
 .vs-invites-head .vs-decision-actions { margin-left: auto; }
 .vs-invites-actions { text-align: right; white-space: nowrap; }
 .vs-invites-actions .vs-link + .vs-link { margin-left: 14px; }
+
+/* Журнал изменений */
+.vs-audit-filters { align-items: flex-end; flex-wrap: wrap; }
+.vs-audit-person { position: relative; min-width: 240px; }
+.vs-audit-found { position: absolute; top: 100%; left: 0; right: 0; z-index: 20;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(22, 32, 43, 0.12); margin-top: 4px; }
+.vs-chip-picked { display: inline-flex; gap: 8px; align-items: center; padding: 7px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--paper); font-size: 13px; }
+.vs-audit { padding: 0; overflow: hidden; }
+.vs-audit-count { padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.vs-audit-row + .vs-audit-row { border-top: 1px solid var(--line); }
+.vs-audit-line {
+  display: grid; grid-template-columns: 130px 90px minmax(0, 1fr) minmax(0, 220px);
+  gap: 12px; width: 100%; padding: 9px 16px; border: 0; background: none;
+  font: inherit; font-size: 13px; text-align: left; color: var(--ink); cursor: pointer;
+}
+.vs-audit-line:hover { background: var(--surface); }
+.vs-audit-when { color: var(--muted); font-variant-numeric: tabular-nums; }
+.vs-audit-action.create { color: var(--brand); }
+.vs-audit-action.delete { color: var(--alert); }
+.vs-audit-what, .vs-audit-who { overflow-wrap: anywhere; }
+.vs-audit-diff { margin: 0 16px 12px; width: calc(100% - 32px); background: var(--surface); border-radius: 6px; }
+.vs-audit-was { color: var(--muted); text-decoration: line-through; }
+.vs-audit-pages { margin-top: 14px; }
+@media (max-width: 720px) {
+  .vs-audit-line { grid-template-columns: 1fr; gap: 2px; }
+}

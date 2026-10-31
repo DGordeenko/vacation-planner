@@ -9,6 +9,7 @@ import HolidayAdmin from "./components/HolidayAdmin";
 import Decisions from "./components/Decisions";
 import TeamCalendar from "./components/TeamCalendar";
 import EmployeeImport from "./components/EmployeeImport";
+import AuditLog from "./components/AuditLog";
 import TagsAdmin from "./components/TagsAdmin";
 import type {
   AnnualSummary, Branding, Holiday, Me, Notification,
@@ -50,7 +51,7 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<
-    "schedule" | "holidays" | "decisions" | "team" | "tags" | "employees">("schedule");
+    "schedule" | "holidays" | "decisions" | "team" | "tags" | "employees" | "audit">("schedule");
   const [decisionsCount, setDecisionsCount] = useState(0);
 
   const reload = useCallback(async () => {
@@ -308,6 +309,8 @@ export default function App() {
                   onClick={() => setView("employees")}>Сотрудники</button>
                 <button className="vs-nav-item" aria-current={view === "holidays"}
                   onClick={() => setView("holidays")}>Праздники</button>
+                <button className="vs-nav-item" aria-current={view === "audit"}
+                  onClick={() => setView("audit")}>Журнал</button>
               </>
             )}
           </nav>
@@ -325,6 +328,8 @@ export default function App() {
 
       {view === "holidays" ? (
         <HolidayAdmin onBack={() => { setView("schedule"); void reload(); }} />
+      ) : view === "audit" ? (
+        <AuditLog onBack={() => setView("schedule")} />
       ) : view === "employees" ? (
         <EmployeeImport onBack={() => { setView("schedule"); void reload(); }} />
       ) : view === "decisions" ? (
