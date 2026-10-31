@@ -17,7 +17,20 @@ class ValidationRuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = ValidationRule
         fields = ["code", "name", "description", "is_enabled", "threshold_value", "approver_level"]
-        read_only_fields = ["code"]
+        read_only_fields = ["code", "name", "description"]
+
+    def validate_threshold_value(self, value):
+        # У правил вроде «захват выходных» порога нет: число там ничего
+        # не значит, а пустой порог у правила с порогом выключил бы проверку.
+        had_threshold = self.instance is not None and self.instance.threshold_value is not None
+        if self.instance is not None and not had_threshold and value is not None:
+            raise serializers.ValidationError("У этого правила нет порога")
+        if had_threshold and value is None:
+            raise serializers.ValidationError(
+                "Порог обязателен. Чтобы не проверять правило, выключите его")
+        if value is not None and value < 0:
+            raise serializers.ValidationError("Порог не может быть отрицательным")
+        return value
 
 
 class ColleagueOnLeaveSerializer(serializers.Serializer):
