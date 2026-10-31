@@ -159,6 +159,8 @@ export const api = {
 
   markRead: (id: string) =>
     request<void>(`/notifications/${id}/mark-read/`, { method: "POST" }),
+  markAllRead: () => request<{ updated: number }>("/notifications/mark-all-read/", { method: "POST" }),
+  unreadCount: () => request<{ count: number }>("/notifications/unread-count/"),
 };
 
 /** Экраны руководителя: решения и календарь команды. */
