@@ -367,3 +367,38 @@ class StartupResilienceTests(SimpleTestCase):
                 result = subprocess.run([sys.executable, "manage.py", *command],
                                         cwd=backend, env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, f"{command}: {result.stderr[-500:]}")
+
+
+class DailyResetScheduleTests(SimpleTestCase):
+    """Ежедневный сброс демо: когда следующий запуск."""
+
+    def setUp(self):
+        from zoneinfo import ZoneInfo
+        self.tz = ZoneInfo("Europe/Moscow")
+
+    def test_next_midnight_local_time(self):
+        from datetime import datetime, time, timezone
+
+        from demo.schedule import next_run
+        # 22:30 UTC 31.10 = 01:30 МСК 01.11 → следующая полночь 02.11 по Москве
+        now = datetime(2026, 10, 31, 22, 30, tzinfo=timezone.utc)
+        moment = next_run(now, time(0, 0), self.tz)
+        self.assertEqual((moment.day, moment.hour, moment.minute), (2, 0, 0))
+        # 20:00 UTC 31.10 = 23:00 МСК → полночь через час
+        moment = next_run(datetime(2026, 10, 31, 20, 0, tzinfo=timezone.utc), time(0, 0), self.tz)
+        self.assertEqual((moment.month, moment.day), (11, 1))
+
+    def test_exact_moment_moves_to_next_day(self):
+        from datetime import datetime, time
+
+        from demo.schedule import next_run
+        now = datetime(2026, 11, 1, 0, 0, tzinfo=self.tz)
+        self.assertEqual(next_run(now, time(0, 0), self.tz).day, 2)
+
+    def test_reset_time_parsing(self):
+        from datetime import time
+
+        from demo.schedule import parse_reset_time
+        self.assertEqual(parse_reset_time("03:30"), time(3, 30))
+        with self.assertRaises(ValueError):
+            parse_reset_time("полночь")
