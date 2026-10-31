@@ -167,6 +167,15 @@ export interface ImportReport {
   preview: { date: string; name: string; day_type: DayType }[];
 }
 
+export interface Invitation {
+  employee_id: string;
+  full_name: string;
+  employee_number: string;
+  email: string;
+  org_unit: string | null;
+  invitation_token: string;
+}
+
 export interface EmployeeImportReport {
   applied: boolean;
   dry_run: boolean;

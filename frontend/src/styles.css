@@ -561,3 +561,10 @@ body {
 .vs-import-head { margin-bottom: 8px; }
 .vs-import-ok { display: grid; gap: 12px; margin-bottom: 14px; }
 .vs-admin > .vs-card + .vs-card { margin-top: 14px; }
+
+/* Приглашения */
+.vs-invites { margin-top: 14px; display: grid; gap: 10px; }
+.vs-invites-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.vs-invites-head .vs-decision-actions { margin-left: auto; }
+.vs-invites-actions { text-align: right; white-space: nowrap; }
+.vs-invites-actions .vs-link + .vs-link { margin-left: 14px; }
