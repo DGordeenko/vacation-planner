@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { managerApi } from "../api";
 import { fmt } from "../dates";
-import type { ApprovalDecision, Decisions as DecisionsData, ExceptionDecision } from "../types";
+import type {
+  ApprovalDecision, DayOffDecision, Decisions as DecisionsData, ExceptionDecision,
+} from "../types";
 
 /** «Требует моего решения»: графики на согласовании и запросы исключений.
     Что попадает в список, решает сервер — здесь только показ и действия. */
@@ -59,6 +61,16 @@ export default function Decisions({ onBack, onChanged }: {
               </h2>
               {data.exceptions.map((item) => (
                 <ExceptionCard key={item.id} item={item} onDone={afterDecision} />
+              ))}
+            </section>
+          )}
+          {data.day_offs.length > 0 && (
+            <section>
+              <h2 className="vs-section-title">
+                Отгулы <span className="vs-muted">{data.day_offs.length}</span>
+              </h2>
+              {data.day_offs.map((item) => (
+                <DayOffCard key={item.id} item={item} onDone={afterDecision} />
               ))}
             </section>
           )}
@@ -245,6 +257,46 @@ function ExceptionCard({ item, onDone }: {
         commentHint="Обязателен: почему исключение допустимо или нет"
         approveLabel="Подтвердить исключение" rejectLabel="Отказать" requireCommentToApprove
         onApprove={approve} onReject={reject} error={error} />
+    </article>
+  );
+}
+
+function DayOffCard({ item, onDone }: {
+  item: DayOffDecision;
+  onDone: (message: string) => void;
+}) {
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function decide(approve: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      if (approve) await managerApi.approveDayOff(item.id);
+      else await managerApi.rejectDayOff(item.id, comment);
+      onDone(`${item.employee_name}: отгул ${fmt(item.date_from)} ${approve ? "согласован" : "отклонён"}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сохранить решение");
+      setBusy(false);
+    }
+  }
+
+  const weekday = new Date(`${item.date_from}T00:00:00`).toLocaleDateString("ru-RU", { weekday: "long" });
+  return (
+    <article className="vs-card vs-decision">
+      <header className="vs-decision-head">
+        <strong>{item.employee_name}</strong>
+        <span className="vs-muted">отгул {fmt(item.date_from)}, {weekday}</span>
+      </header>
+      <div className="vs-muted vs-small">
+        На счёте {item.balance.hours} ч — хватает на {item.balance.available_days} дн.
+        Часы спишутся после согласования.
+      </div>
+      <DecisionFoot busy={busy} comment={comment} setComment={setComment}
+        commentHint="Необязателен при согласовании, обязателен при отказе"
+        approveLabel="Согласовать" rejectLabel="Отклонить" requireCommentToApprove={false}
+        onApprove={() => decide(true)} onReject={() => decide(false)} error={error} />
     </article>
   );
 }

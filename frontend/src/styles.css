@@ -553,3 +553,85 @@ body {
 .vs-chain-step.current .vs-chain-mark {
   box-shadow: inset 0 0 0 2px var(--brand); color: var(--brand);
 }
+
+/* Загрузка сотрудников */
+.vs-import { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 14px; }
+.vs-import .vs-details { flex-basis: 100%; }
+.vs-file-btn { cursor: pointer; }
+.vs-import-head { margin-bottom: 8px; }
+.vs-import-ok { display: grid; gap: 12px; margin-bottom: 14px; }
+.vs-admin > .vs-card + .vs-card { margin-top: 14px; }
+
+/* Приглашения */
+.vs-invites { margin-top: 14px; display: grid; gap: 10px; }
+.vs-invites-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.vs-invites-head .vs-decision-actions { margin-left: auto; }
+.vs-invites-actions { text-align: right; white-space: nowrap; }
+.vs-invites-actions .vs-link + .vs-link { margin-left: 14px; }
+
+/* Журнал изменений */
+.vs-audit-filters { align-items: flex-end; flex-wrap: wrap; }
+.vs-audit-person { position: relative; min-width: 240px; }
+.vs-audit-found { position: absolute; top: 100%; left: 0; right: 0; z-index: 20;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(22, 32, 43, 0.12); margin-top: 4px; }
+.vs-chip-picked { display: inline-flex; gap: 8px; align-items: center; padding: 7px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--paper); font-size: 13px; }
+.vs-audit { padding: 0; overflow: hidden; }
+.vs-audit-count { padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.vs-audit-row + .vs-audit-row { border-top: 1px solid var(--line); }
+.vs-audit-line {
+  display: grid; grid-template-columns: 130px 90px minmax(0, 1fr) minmax(0, 220px);
+  gap: 12px; width: 100%; padding: 9px 16px; border: 0; background: none;
+  font: inherit; font-size: 13px; text-align: left; color: var(--ink); cursor: pointer;
+}
+.vs-audit-line:hover { background: var(--surface); }
+.vs-audit-when { color: var(--muted); font-variant-numeric: tabular-nums; }
+.vs-audit-action.create { color: var(--brand); }
+.vs-audit-action.delete { color: var(--alert); }
+.vs-audit-what, .vs-audit-who { overflow-wrap: anywhere; }
+.vs-audit-diff { margin: 0 16px 12px; width: calc(100% - 32px); background: var(--surface); border-radius: 6px; }
+.vs-audit-was { color: var(--muted); text-decoration: line-through; }
+.vs-audit-pages { margin-top: 14px; }
+@media (max-width: 720px) {
+  .vs-audit-line { grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* Настройки */
+.vs-settings { display: grid; gap: 14px; }
+.vs-settings-section { display: grid; gap: 12px; }
+.vs-settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 20px; }
+.vs-settings-foot { display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+.vs-field-error { color: var(--alert); font-size: 12px; }
+.vs-rules { display: grid; }
+.vs-rule { display: grid; grid-template-columns: minmax(0, 1fr) 140px; gap: 6px 16px;
+  align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.vs-rule.off .vs-rule-name { color: var(--muted); }
+.vs-rule-switch > span { display: grid; gap: 2px; }
+.vs-rule-name { font-weight: 500; font-size: 13.5px; }
+.vs-rule-desc { display: block; }
+.vs-rule-threshold { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.vs-rule-threshold input { width: 72px; }
+.vs-rule-error { grid-column: 1 / -1; }
+.vs-colour { display: flex; gap: 8px; align-items: center; }
+.vs-colour input[type=color] { width: 40px; height: 34px; padding: 2px; }
+.vs-colour input:not([type=color]) { width: 100px; }
+.vs-colour-sample { color: #fff; padding: 7px 12px; border-radius: 8px; font-size: 13px; }
+@media (max-width: 640px) { .vs-rule { grid-template-columns: 1fr; } .vs-rule-threshold { justify-content: flex-start; } }
+
+/* Отгулы и отсутствия */
+.vs-timeoff { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); align-items: start; }
+.vs-timeoff-card { display: grid; gap: 12px; }
+.vs-timeoff-balance { display: grid; gap: 2px; }
+.vs-big { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+.vs-timeoff-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.vs-timeoff-form .vs-field { min-width: 150px; }
+.vs-absence-form .vs-absence-other { flex: 1 1 220px; }
+.vs-timeoff-list { margin: 0; }
+.vs-timeoff-list .vs-item { align-items: center; gap: 10px; }
+.vs-status { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: var(--surface); margin-left: auto; }
+.vs-status.ok { color: var(--brand); }
+.vs-status.bad { color: var(--alert); background: #fdf3f3; }
+.vs-plus { color: var(--brand); white-space: nowrap; }
+.vs-minus { color: var(--alert); white-space: nowrap; }
+@media (max-width: 480px) { .vs-timeoff { grid-template-columns: 1fr; } }

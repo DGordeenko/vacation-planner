@@ -167,6 +167,73 @@ export interface ImportReport {
   preview: { date: string; name: string; day_type: DayType }[];
 }
 
+export interface Invitation {
+  employee_id: string;
+  full_name: string;
+  employee_number: string;
+  email: string;
+  org_unit: string | null;
+  invitation_token: string;
+}
+
+export interface EmployeeImportReport {
+  applied: boolean;
+  dry_run: boolean;
+  total_rows: number;
+  created: number;
+  updated: number;
+  problems: ImportProblem[];
+  warnings: ImportProblem[];
+}
+
+export interface AuditChange {
+  field: string;
+  label: string;
+  was: unknown;
+  became: unknown;
+}
+
+export interface AuditRow {
+  id: string;
+  entity_type: string;
+  entity_type_display: string;
+  entity_id: string | null;
+  entity_label: string;
+  action: "create" | "update" | "delete";
+  action_display: string;
+  changed_by: string | null;
+  changed_by_name: string;
+  subject_employee: string | null;
+  subject_name: string | null;
+  changed_at: string;
+  diff: Record<string, unknown>;
+  changes: AuditChange[];
+  source: string;
+}
+
+export interface AuditEntityType {
+  code: string;
+  name: string;
+}
+
+export interface CompanySettingsRow {
+  annual_vacation_norm_days: number;
+  monthly_accrual_rate: number;
+  approval_levels: number;
+  workday_hours: number;
+  rvd_compensation_tracking_enabled: boolean;
+}
+
+export interface ValidationRuleRow {
+  code: string;
+  name: string;
+  description: string;
+  is_enabled: boolean;
+  /** Строка: DecimalField приходит из DRF строкой. null — у правила нет порога. */
+  threshold_value: string | null;
+  approver_level: string;
+}
+
 export interface CalendarImpact {
   year: number;
   affected_entries: number;
@@ -279,10 +346,66 @@ export interface ExceptionDecision extends TeamEntry {
   violations: Violation[];
 }
 
+export interface TimeOffSummary {
+  hours: number;
+  workday_hours: number;
+  available_days: number;
+  remainder_hours: number;
+}
+
+export interface TimeOffBalance extends TimeOffSummary {
+  /** Отгулы на согласовании: часы ещё не списаны, но заняты. */
+  pending_days: number;
+  /** Сколько отгулов можно попросить сейчас. */
+  free_days: number;
+  history: { date: string; hours: number; reason: string; comment: string }[];
+}
+
+export interface DayOffDecision extends TeamEntry {
+  employee_id: string;
+  employee_name: string;
+  balance: TimeOffSummary;
+}
+
 export interface Decisions {
   count: number;
   approvals: ApprovalDecision[];
   exceptions: ExceptionDecision[];
+  day_offs: DayOffDecision[];
+}
+
+export interface AbsenceReason {
+  id: string;
+  code: string;
+  name: string;
+  is_other: boolean;
+}
+
+export interface Absence {
+  id: string;
+  employee: string;
+  employee_name: string;
+  date_from: string;
+  date_to: string | null;
+  reason: string | null;
+  reason_name: string | null;
+  custom_reason_text: string;
+  days: number;
+  recorded_by: string;
+  recorded_by_id: string | null;
+  created_at: string;
+}
+
+export interface AbsenceSummary {
+  year: number;
+  total_days: number;
+  episodes: number;
+  by_reason: { reason: string; days: number; count: number }[];
+}
+
+export interface CheckResult {
+  is_valid: boolean;
+  violations: Violation[];
 }
 
 export interface TeamCalendarEntry extends TeamEntry {
