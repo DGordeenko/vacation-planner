@@ -16,7 +16,6 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 
 from audit.context import acting_as
-
 from employees.models import Employee, EmployeeTag, OrgUnit, Tag
 
 # Кадровые системы выгружают даты по-разному — принимаем распространённые формы.
@@ -145,7 +144,8 @@ def import_employees(raw_bytes: bytes, dry_run: bool = False) -> ImportReport:
         email = (row.get("email") or "").strip().lower()
 
         if not number:
-            report.problems.append(RowProblem(index, "employee_number", "", "Пустой табельный номер"))
+            report.problems.append(
+                RowProblem(index, "employee_number", "", "Пустой табельный номер"))
             continue
         if not full_name:
             report.problems.append(RowProblem(index, "full_name", "", "Пустое ФИО"))
@@ -174,7 +174,8 @@ def import_employees(raw_bytes: bytes, dry_run: bool = False) -> ImportReport:
             report.problems.append(RowProblem(index, "hire_date", "", "Пустая дата приёма"))
         elif hire is False:
             report.problems.append(RowProblem(
-                index, "hire_date", row.get("hire_date", ""), "Дата приёма в нераспознанном формате"))
+                index, "hire_date", row.get("hire_date", ""),
+                "Дата приёма в нераспознанном формате"))
         elif hire > date.today():
             report.warnings.append(RowProblem(
                 index, "hire_date", str(hire), "Дата приёма в будущем"))
@@ -248,12 +249,12 @@ def get_actor_for_import():
 
 
 def _apply(parsed, report):
-    from employees.models import Employee, EmployeeTag, OrgUnit, Tag
+    from employees.models import Employee, OrgUnit
 
     unit_cache = {}
     for item in parsed:
         parent = None
-        for (column, unit_type), name in zip(UNIT_COLUMNS, item["units"]):
+        for (_column, unit_type), name in zip(UNIT_COLUMNS, item["units"], strict=False):
             if not name:
                 continue
             key = (name, unit_type, parent.id if parent else None)

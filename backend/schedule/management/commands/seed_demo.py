@@ -5,8 +5,8 @@ from datetime import date
 
 from django.core.management.base import BaseCommand
 
-from config.commands import WorkingDatabaseChecks
 from company.models import AbsenceReason, CompanySettings, Holiday
+from config.commands import WorkingDatabaseChecks
 from employees.models import Employee, EmployeeTag, OrgUnit, Tag
 from schedule.models import ValidationRule
 

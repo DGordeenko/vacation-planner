@@ -20,7 +20,10 @@ import os
 from django.conf import settings
 
 from sso.providers.base import (
-    BaseProvider, DomainIdentity, ProviderError, ProviderNotConfigured,
+    BaseProvider,
+    DomainIdentity,
+    ProviderError,
+    ProviderNotConfigured,
 )
 
 

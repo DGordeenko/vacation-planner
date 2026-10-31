@@ -7,11 +7,11 @@
 import calendar
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from company.models import CompanySettings, Holiday
 from employees.models import Employee
-from schedule.models import ScheduleEntry, ValidationRule, VacationLedger
+from schedule.models import ScheduleEntry, VacationLedger, ValidationRule
 
 SATURDAY, SUNDAY = 5, 6
 
@@ -129,7 +129,8 @@ def balance_on(employee: Employee, on_date: date) -> Decimal:
             ScheduleEntry.Status.APPROVED,
         ],
     )
-    spent = sum((Decimal(vacation_days(e.date_from, e.effective_date_to)) for e in planned), Decimal("0.00"))
+    spent = sum((Decimal(vacation_days(e.date_from, e.effective_date_to)) for e in planned),
+                Decimal("0.00"))
 
     return (accrued + manual_total - spent).quantize(Decimal("0.01"))
 
@@ -353,8 +354,9 @@ def validate_entry(employee: Employee, date_from: date, date_to: date, record_ty
                 RuleViolation(
                     code=rule.code,
                     name=rule.name,
-                    message=(f"{'Вместе с соседними отпусками непрерывное' if joined else 'Непрерывное'}"
-                             f" отсутствие {start:%d.%m.%Y}—{end:%d.%m.%Y} — "
+                    message=(("Вместе с соседними отпусками непрерывное" if joined
+                              else "Непрерывное")
+                             + f" отсутствие {start:%d.%m.%Y}—{end:%d.%m.%Y} — "
                              f"{workdays} рабочих дней, больше "
                              f"{round_days(rule.threshold_value)}"),
                 )

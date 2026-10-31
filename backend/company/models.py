@@ -74,6 +74,9 @@ class CompanySettings(models.Model):
         verbose_name = "Настройки компании"
         verbose_name_plural = "Настройки компании"
 
+    def __str__(self):
+        return "Настройки компании"
+
     def save(self, *args, **kwargs):
         if not self.pk and CompanySettings.objects.exists():
             raise ValidationError("Настройки компании существуют в единственном экземпляре")

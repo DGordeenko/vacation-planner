@@ -21,12 +21,12 @@ from schedule.models import (
     ValidationRule,
 )
 from schedule.serializers import (
-    NotificationSerializer,
-    ExceptionApprovalSerializer,
-    ScheduleApprovalSerializer,
     AbsenceReasonSerializer,
     AbsenceSerializer,
+    ExceptionApprovalSerializer,
+    NotificationSerializer,
     RvdSerializer,
+    ScheduleApprovalSerializer,
     ScheduleEntrySerializer,
     ValidateRequestSerializer,
     ValidationRuleSerializer,
@@ -243,7 +243,8 @@ class SubmitYearView(APIView):
         if employee != request.user and not request.user.is_admin:
             return Response({"detail": "Нельзя отправить чужой график"},
                             status=status.HTTP_403_FORBIDDEN)
-        year = int(request.query_params.get("year") or request.data.get("year") or date.today().year)
+        year = int(request.query_params.get("year") or request.data.get("year")
+                   or date.today().year)
         try:
             approval = approvals.submit_year(employee, year, request.user)
         except approvals.ApprovalError as error:

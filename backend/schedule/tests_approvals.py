@@ -14,7 +14,6 @@ from schedule.models import (
     Notification,
     ScheduleApproval,
     ScheduleEntry,
-    ValidationRule,
 )
 from schedule.tests import seed_rules
 

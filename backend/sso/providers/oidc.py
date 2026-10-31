@@ -15,7 +15,10 @@ from urllib.parse import urlencode
 from django.conf import settings
 
 from sso.providers.base import (
-    BaseProvider, DomainIdentity, ProviderError, ProviderNotConfigured,
+    BaseProvider,
+    DomainIdentity,
+    ProviderError,
+    ProviderNotConfigured,
 )
 
 _REQUIRED = ("server_url", "realm", "client_id", "redirect_uri")

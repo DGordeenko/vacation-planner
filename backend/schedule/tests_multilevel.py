@@ -9,7 +9,10 @@ from company.models import CompanySettings
 from employees.models import Employee, OrgUnit
 from schedule import approvals
 from schedule.models import (
-    ApprovalStep, Notification, ScheduleApproval, ScheduleEntry,
+    ApprovalStep,
+    Notification,
+    ScheduleApproval,
+    ScheduleEntry,
 )
 from schedule.tests import seed_rules
 

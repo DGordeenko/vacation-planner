@@ -138,6 +138,9 @@ class VacationLedger(models.Model):
         verbose_name = "Запись регистра отпуска"
         verbose_name_plural = "Регистр отпускных дней"
 
+    def __str__(self):
+        return f"{self.employee}: {self.days_delta} дн. ({self.get_reason_display()})"
+
 
 class ExceptionApproval(models.Model):
     """Подтверждение исключения по заблокированному правилу."""
@@ -156,6 +159,9 @@ class ExceptionApproval(models.Model):
     class Meta:
         verbose_name = "Подтверждение исключения"
         verbose_name_plural = "Подтверждения исключений"
+
+    def __str__(self):
+        return f"{self.rule} — {self.schedule_entry}"
 
 
 class Notification(models.Model):
@@ -180,6 +186,9 @@ class Notification(models.Model):
         ordering = ["-created_at"]
         verbose_name = "Уведомление"
         verbose_name_plural = "Уведомления"
+
+    def __str__(self):
+        return self.message[:80]
 
 
 class ScheduleApproval(models.Model):
@@ -251,6 +260,9 @@ class ApprovalStep(models.Model):
         ordering = ["order"]
         verbose_name = "Шаг согласования"
         verbose_name_plural = "Шаги согласования"
+
+    def __str__(self):
+        return f"{self.order}. {self.approver}"
 
 
 class TimeOffLedger(models.Model):
