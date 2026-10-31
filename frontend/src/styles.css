@@ -553,3 +553,11 @@ body {
 .vs-chain-step.current .vs-chain-mark {
   box-shadow: inset 0 0 0 2px var(--brand); color: var(--brand);
 }
+
+/* Загрузка сотрудников */
+.vs-import { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 14px; }
+.vs-import .vs-details { flex-basis: 100%; }
+.vs-file-btn { cursor: pointer; }
+.vs-import-head { margin-bottom: 8px; }
+.vs-import-ok { display: grid; gap: 12px; margin-bottom: 14px; }
+.vs-admin > .vs-card + .vs-card { margin-top: 14px; }
