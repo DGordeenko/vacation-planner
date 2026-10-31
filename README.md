@@ -194,10 +194,9 @@ cd frontend && npm run lint && npx tsc -b && npm run build
 миграции отдельным Job, почта — CronJob, пробы на `/api/health/`. Пошагово —
 `docs/18-deploy-kubernetes.md`.
 
-**Railway.** По сервису на папку, PostgreSQL плагином (даёт `DATABASE_URL`).
-Поскольку сервисы получают разные домены, задать `VITE_API_BASE_URL`
-с адресом бэкенда и перечислить домен фронтенда в `CORS_ALLOWED_ORIGINS`
-и `CSRF_TRUSTED_ORIGINS`.
+**Railway.** По сервису на папку плюс PostgreSQL. Фронтенд проксирует API
+на бэкенд по внутренней сети Railway, поэтому домен один и CORS не нужен.
+Пошагово — `docs/17-deploy-railway.md`.
 
 Манифесты и инструкции — в работе, см. `docs/tasks/00-skeleton.md`.
 

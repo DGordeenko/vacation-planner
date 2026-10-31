@@ -95,10 +95,9 @@ CI зелёный на обоих событиях, команды в `CLAUDE.md
   **Миграции вынести из entrypoint** в Job или initContainer: при нескольких
   репликах одновременный старт миграций приводит к конкуренции.
   CronJob для почтовой очереди (`send_mail_queue`, см. `docs/12-mail-setup.md`).
-- **Railway:** по сервису на папку, PostgreSQL плагином (даёт `DATABASE_URL`),
-  healthcheck на `/api/health/`, `VITE_API_BASE_URL` с адресом бэкенда,
-  `CORS_ALLOWED_ORIGINS` и `CSRF_TRUSTED_ORIGINS` с доменом фронтенда.
-  Почтовая очередь на их cron.
+- **Railway:** ~~инструкция~~ — `docs/17-deploy-railway.md`. Фронтенд проксирует
+  API по внутренней сети (PR #13), поэтому `VITE_API_BASE_URL` и CORS не нужны;
+  вариант с двумя доменами описан там же. Осталось: почтовая очередь на cron.
 - Короткая инструкция по развёртыванию в `docs/`.
 
 ### Готовность итерации 3
