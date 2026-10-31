@@ -403,6 +403,21 @@ export interface AbsenceSummary {
   by_reason: { reason: string; days: number; count: number }[];
 }
 
+export type RvdCompensation = "double_pay" | "pay_plus_day_off";
+
+export interface RvdRow {
+  id: string;
+  employee: string;
+  employee_name: string;
+  employee_number: string;
+  date_from: string;
+  /** DecimalField приходит строкой */
+  work_hours: string;
+  rvd_compensation_type: RvdCompensation;
+  compensation_display: string;
+  task_link: string;
+}
+
 export interface CheckResult {
   is_valid: boolean;
   violations: Violation[];

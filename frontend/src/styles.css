@@ -635,3 +635,11 @@ body {
 .vs-plus { color: var(--brand); white-space: nowrap; }
 .vs-minus { color: var(--alert); white-space: nowrap; }
 @media (max-width: 480px) { .vs-timeoff { grid-template-columns: 1fr; } }
+
+/* Работа в выходные */
+.vs-rvd-form { display: grid; gap: 10px; margin-bottom: 14px; }
+.vs-rvd-hours input { width: 90px; }
+.vs-rvd-task { flex: 1 1 220px; }
+.vs-rvd-table th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.vs-rvd-link { max-width: 260px; overflow-wrap: anywhere; }
+.vs-nowrap { white-space: nowrap; }

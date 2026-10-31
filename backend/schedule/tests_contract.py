@@ -400,3 +400,25 @@ class TimeOffContractTests(TestCase):
         decisions = client.get("/api/v1/decisions/").json()
         self.assertEqual(DAY_OFF_DECISION_FIELDS, set(decisions["day_offs"][0]))
         self.assertEqual(TIME_OFF_SUMMARY_FIELDS, set(decisions["day_offs"][0]["balance"]))
+
+
+# types.ts: RvdRow
+RVD_FIELDS = {"id", "employee", "employee_name", "employee_number", "date_from", "work_hours",
+              "rvd_compensation_type", "compensation_display", "task_link"}
+
+
+class RvdContractTests(TestCase):
+    def test_rvd_contract(self):
+        CompanySettings.get_solo()
+        admin = Employee.objects.create_user(
+            email="a@r.ru", employee_number="1", full_name="А", hire_date=date(2015, 1, 1))
+        admin.is_admin = True
+        admin.save()
+        client = APIClient()
+        client.force_authenticate(admin)
+        created = client.post("/api/v1/admin/rvd/", {
+            "employee": str(admin.id), "date_from": "2026-10-24", "work_hours": "8",
+            "rvd_compensation_type": "pay_plus_day_off"}, format="json").json()
+        self.assertEqual(RVD_FIELDS, set(created))
+        listed = client.get("/api/v1/admin/rvd/?year=2026&month=10").json()
+        self.assertEqual(RVD_FIELDS, set(listed["results"][0]))
