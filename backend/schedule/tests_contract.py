@@ -277,3 +277,24 @@ class EmployeeImportContractTests(TestCase):
             format="json").json()
         self.assertEqual(EMPLOYEE_IMPORT_FIELDS, set(body))
         self.assertEqual({"row", "column", "value", "message"}, set(body["problems"][0]))
+
+
+# types.ts: Invitation
+INVITATION_FIELDS = {"employee_id", "full_name", "employee_number", "email", "org_unit",
+                     "invitation_token"}
+
+
+class InvitationContractTests(TestCase):
+    def test_invitation_contract(self):
+        import uuid
+        admin = Employee.objects.create_user(
+            email="a@i.ru", employee_number="1", full_name="А", hire_date=date(2015, 1, 1))
+        admin.is_admin = True
+        admin.save()
+        Employee.objects.create_user(
+            email="b@i.ru", employee_number="2", full_name="Б", hire_date=date(2015, 1, 1),
+            invitation_token=uuid.uuid4())
+        client = APIClient()
+        client.force_authenticate(admin)
+        rows = client.get("/api/v1/admin/invitations/").json()
+        self.assertEqual(INVITATION_FIELDS, set(rows[0]))

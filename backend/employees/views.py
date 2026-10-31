@@ -1,7 +1,12 @@
 import base64
 import binascii
 
+import uuid
+
 from django.contrib.auth import authenticate
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, BasePermission
@@ -56,12 +61,22 @@ class InvitationAcceptView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        employee = Employee.objects.filter(invitation_token=token_value).first()
+        try:
+            employee = Employee.objects.filter(invitation_token=token_value,
+                                               status=Employee.Status.ACTIVE).first()
+        except ValidationError:  # не UUID — такое же недействительное приглашение
+            employee = None
         if employee is None:
             return Response(
                 {"detail": "Приглашение недействительно", "code": "invalid_invitation"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        try:
+            validate_password(password, user=employee)
+        except ValidationError as error:
+            return Response({"detail": " ".join(error.messages), "code": "weak_password"},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         employee.set_password(password)
         employee.invitation_token = None
@@ -141,3 +156,48 @@ class EmployeeImportView(APIView):
         }
         return Response(payload, status=status.HTTP_200_OK if report.applied
                         else status.HTTP_409_CONFLICT)
+
+
+def _invitation_row(employee):
+    return {
+        "employee_id": str(employee.id),
+        "full_name": employee.full_name,
+        "employee_number": employee.employee_number,
+        "email": employee.email,
+        "org_unit": employee.org_unit.name if employee.org_unit else None,
+        "invitation_token": str(employee.invitation_token),
+    }
+
+
+class InvitationListView(APIView):
+    """Список неиспользованных приглашений для рассылки администратором.
+
+    Ссылку собирает интерфейс из своего адреса и токена: сервер не знает,
+    по какому адресу сотрудники открывают приложение (Railway, ingress).
+    Приглашения уволенных не выдаются.
+    """
+
+    permission_classes = [RecordAuditActor, IsCompanyAdmin]
+
+    def get(self, request):
+        employees = (Employee.objects
+                     .filter(invitation_token__isnull=False, status=Employee.Status.ACTIVE)
+                     .select_related("org_unit").order_by("org_unit__name", "full_name"))
+        return Response([_invitation_row(e) for e in employees])
+
+
+class InvitationReissueView(APIView):
+    """Новая ссылка взамен потерянной: прежняя перестаёт действовать.
+
+    Пароль не меняется, пока сотрудник не откроет новую ссылку, поэтому
+    перевыпуск для уже вошедшего сотрудника — это сброс пароля по ссылке.
+    """
+
+    permission_classes = [RecordAuditActor, IsCompanyAdmin]
+
+    def post(self, request, employee_id):
+        employee = get_object_or_404(Employee, id=employee_id,
+                                     status=Employee.Status.ACTIVE)
+        employee.invitation_token = uuid.uuid4()
+        employee.save(update_fields=["invitation_token"])
+        return Response(_invitation_row(employee))
