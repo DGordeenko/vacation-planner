@@ -175,11 +175,13 @@ class DemoContractTests(TestCase):
 
 
 # types.ts: Decisions, ApprovalDecision, ExceptionDecision, TeamEntry
-DECISIONS_FIELDS = {"count", "approvals", "exceptions"}
+DECISIONS_FIELDS = {"count", "approvals", "exceptions", "day_offs"}
 APPROVAL_DECISION_FIELDS = {"approval_id", "step_id", "employee_id", "employee_name", "year",
                             "scope", "submitted_at", "planned_days", "entries", "steps"}
 TEAM_ENTRY_FIELDS = {"id", "record_type", "date_from", "date_to", "status", "vacation_days"}
 EXCEPTION_DECISION_FIELDS = TEAM_ENTRY_FIELDS | {"employee_id", "employee_name", "violations"}
+DAY_OFF_DECISION_FIELDS = TEAM_ENTRY_FIELDS | {"employee_id", "employee_name", "balance"}
+TIME_OFF_SUMMARY_FIELDS = {"hours", "workday_hours", "available_days", "remainder_hours"}
 APPROVAL_STEP_FIELDS = {"id", "order", "level", "level_display", "approver", "approver_name",
                         "status", "comment", "decided_at"}
 # types.ts: TeamCalendar, TagRow, TagMember, EmployeeBrief
@@ -349,3 +351,52 @@ class SettingsContractTests(TestCase):
         rules = client.get("/api/v1/validation-rules/").json()
         rows = rules["results"] if isinstance(rules, dict) else rules
         self.assertEqual(VALIDATION_RULE_FIELDS, set(rows[0]))
+
+
+# types.ts: TimeOffBalance, DayOffDecision, Absence, AbsenceSummary, AbsenceReason
+ABSENCE_FIELDS = {"id", "employee", "employee_name", "date_from", "date_to", "reason",
+                  "reason_name", "custom_reason_text", "days", "recorded_by",
+                  "recorded_by_id", "created_at"}
+
+
+class TimeOffContractTests(TestCase):
+    def test_time_off_contract(self):
+        from decimal import Decimal
+        from company.models import AbsenceReason
+        from employees.models import OrgUnit
+        from schedule import calculations
+        CompanySettings.get_solo()
+        unit = OrgUnit.objects.create(name="О", unit_type=OrgUnit.UnitType.DEPARTMENT)
+        chief = Employee.objects.create_user(
+            email="c@t.ru", employee_number="1", full_name="Ч", hire_date=date(2015, 1, 1),
+            org_unit=unit)
+        unit.manager = chief
+        unit.save()
+        emp = Employee.objects.create_user(
+            email="e@t.ru", employee_number="2", full_name="Е", hire_date=date(2015, 1, 1),
+            org_unit=unit)
+        rvd = ScheduleEntry.objects.create(
+            employee=emp, created_by=chief, record_type=ScheduleEntry.RecordType.RVD,
+            date_from=date(2026, 3, 7), date_to=date(2026, 3, 7), work_hours=Decimal("8"),
+            rvd_compensation_type=ScheduleEntry.RvdCompensation.PAY_PLUS_DAY_OFF,
+            status=ScheduleEntry.Status.APPROVED)
+        calculations.sync_rvd_accrual(rvd)
+        client = APIClient()
+        client.force_authenticate(emp)
+        balance = client.get(f"/api/v1/employees/{emp.id}/time-off-balance/").json()
+        self.assertEqual(TIME_OFF_SUMMARY_FIELDS | {"pending_days", "free_days", "history"},
+                         set(balance))
+        self.assertEqual({"date", "hours", "reason", "comment"}, set(balance["history"][0]))
+        client.post("/api/v1/day-offs/", {"date_from": "2027-03-10"}, format="json")
+        sick = AbsenceReason.objects.get(code="sick_leave")
+        client.post("/api/v1/absences/", {"date_from": "2026-03-10", "reason": str(sick.id)},
+                    format="json")
+        self.assertEqual(ABSENCE_FIELDS, set(client.get("/api/v1/absences/").json()["results"][0]))
+        self.assertEqual({"year", "total_days", "episodes", "by_reason"}, set(
+            client.get(f"/api/v1/employees/{emp.id}/absence-summary/?year=2026").json()))
+        self.assertEqual({"id", "code", "name", "is_other"},
+                         set(client.get("/api/v1/absence-reasons/").json()["results"][0]))
+        client.force_authenticate(chief)
+        decisions = client.get("/api/v1/decisions/").json()
+        self.assertEqual(DAY_OFF_DECISION_FIELDS, set(decisions["day_offs"][0]))
+        self.assertEqual(TIME_OFF_SUMMARY_FIELDS, set(decisions["day_offs"][0]["balance"]))

@@ -321,3 +321,58 @@ class TaskLinkTests(DayOffBase):
 
     def test_empty_allowed(self):
         self.assertEqual(self._post("").status_code, 201)
+
+
+class DayOffDecisionScreenTests(DayOffBase):
+    """Отгул на экране «Требует моего решения» у руководителя."""
+
+    def request_day_off(self, day="2027-03-10"):
+        self.client.force_authenticate(self.employee)
+        return self.client.post("/api/v1/day-offs/", {"date_from": day}, format="json")
+
+    def test_request_listed_for_manager_with_balance(self):
+        self.add_rvd(date(2027, 3, 6), 8, ScheduleEntry.RvdCompensation.PAY_PLUS_DAY_OFF)
+        entry_id = self.request_day_off().json()["id"]
+        self.client.force_authenticate(self.chief)
+        body = self.client.get("/api/v1/decisions/").json()
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["day_offs"][0]["id"], entry_id)
+        self.assertEqual(body["day_offs"][0]["employee_name"], "Сотрудник")
+        self.assertEqual(body["day_offs"][0]["balance"]["available_days"], 1)
+        self.client.post(f"/api/v1/day-offs/{entry_id}/approve/")
+        self.assertEqual(self.client.get("/api/v1/decisions/").json()["day_offs"], [])
+
+    def test_not_listed_for_others(self):
+        self.add_rvd(date(2027, 3, 6), 8, ScheduleEntry.RvdCompensation.PAY_PLUS_DAY_OFF)
+        self.request_day_off()
+        self.client.force_authenticate(self.admin)  # у сотрудника есть руководитель
+        self.assertEqual(self.client.get("/api/v1/decisions/").json()["day_offs"], [])
+
+    def test_same_date_can_be_requested_after_rejection(self):
+        self.add_rvd(date(2027, 3, 6), 8, ScheduleEntry.RvdCompensation.PAY_PLUS_DAY_OFF)
+        entry_id = self.request_day_off().json()["id"]
+        self.client.force_authenticate(self.chief)
+        self.client.post(f"/api/v1/day-offs/{entry_id}/reject/", {"comment": "Релиз"},
+                         format="json")
+        self.assertEqual(self.request_day_off().status_code, 201)
+
+
+class TimeOffScreenTests(DayOffBase):
+    def test_pending_day_off_reduces_free_days(self):
+        self.add_rvd(date(2027, 3, 6), 16, ScheduleEntry.RvdCompensation.PAY_PLUS_DAY_OFF)
+        self.client.force_authenticate(self.employee)
+        url = f"/api/v1/employees/{self.employee.id}/time-off-balance/"
+        self.assertEqual(self.client.get(url).json()["free_days"], 2)
+        self.client.post("/api/v1/day-offs/", {"date_from": "2027-03-10"}, format="json")
+        body = self.client.get(url).json()
+        self.assertEqual((body["available_days"], body["pending_days"], body["free_days"]),
+                         (2, 1, 1))
+
+    def test_own_day_offs_filter(self):
+        self.add_rvd(date(2027, 3, 6), 8, ScheduleEntry.RvdCompensation.PAY_PLUS_DAY_OFF)
+        self.client.force_authenticate(self.employee)
+        self.client.post("/api/v1/day-offs/", {"date_from": "2027-03-10"}, format="json")
+        self.client.force_authenticate(self.chief)
+        own = self.client.get(f"/api/v1/day-offs/?employee_id={self.chief.id}").json()
+        team = self.client.get(f"/api/v1/day-offs/?employee_id={self.employee.id}").json()
+        self.assertEqual((own["count"], team["count"]), (0, 1))
