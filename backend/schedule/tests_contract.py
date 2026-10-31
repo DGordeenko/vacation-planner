@@ -326,3 +326,26 @@ class AuditContractTests(TestCase):
                          set(body["results"][0]["changes"][0]))
         self.assertEqual({"code", "name"},
                          set(client.get("/api/v1/audit-log/entity-types/").json()[0]))
+
+
+# types.ts: CompanySettingsRow, ValidationRuleRow
+COMPANY_SETTINGS_FIELDS = {"annual_vacation_norm_days", "monthly_accrual_rate",
+                           "approval_levels", "workday_hours",
+                           "rvd_compensation_tracking_enabled"}
+VALIDATION_RULE_FIELDS = {"code", "name", "description", "is_enabled", "threshold_value",
+                          "approver_level"}
+
+
+class SettingsContractTests(TestCase):
+    def test_settings_and_rules_contract(self):
+        from schedule.tests import seed_rules
+        CompanySettings.get_solo()
+        seed_rules()
+        user = Employee.objects.create_user(
+            email="a@i.ru", employee_number="1", full_name="А", hire_date=date(2015, 1, 1))
+        client = APIClient()
+        client.force_authenticate(user)
+        self.assertEqual(COMPANY_SETTINGS_FIELDS, set(client.get("/api/v1/settings/").json()))
+        rules = client.get("/api/v1/validation-rules/").json()
+        rows = rules["results"] if isinstance(rules, dict) else rules
+        self.assertEqual(VALIDATION_RULE_FIELDS, set(rows[0]))

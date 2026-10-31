@@ -216,6 +216,24 @@ export interface AuditEntityType {
   name: string;
 }
 
+export interface CompanySettingsRow {
+  annual_vacation_norm_days: number;
+  monthly_accrual_rate: number;
+  approval_levels: number;
+  workday_hours: number;
+  rvd_compensation_tracking_enabled: boolean;
+}
+
+export interface ValidationRuleRow {
+  code: string;
+  name: string;
+  description: string;
+  is_enabled: boolean;
+  /** Строка: DecimalField приходит из DRF строкой. null — у правила нет порога. */
+  threshold_value: string | null;
+  approver_level: string;
+}
+
 export interface CalendarImpact {
   year: number;
   affected_entries: number;
