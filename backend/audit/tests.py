@@ -255,7 +255,8 @@ class AuditScreenTests(AuditBase):
         row = self.entries(entity_type="Employee", action="update")[0]
         self.assertEqual(row["entity_type_display"], "Сотрудник")
         change = next(c for c in row["changes"] if c["field"] == "org_unit")
-        self.assertEqual((change["was"], change["became"]), ("Группа А (Группа)", "Отдел А (Отдел)"))
+        self.assertEqual((change["was"], change["became"]),
+                         ("Группа А (Группа)", "Отдел А (Отдел)"))
         self.assertNotEqual(change["label"], "org_unit")
 
     def test_create_lists_filled_fields_only(self):

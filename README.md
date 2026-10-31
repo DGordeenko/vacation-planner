@@ -149,12 +149,15 @@ npm run dev                       # http://localhost:5173
 
 Запросы к `/api` проксируются на бэкенд настройкой в `vite.config.ts`.
 
-### Тесты
+### Тесты и линтеры
 
 ```bash
-cd backend && python manage.py test        # 430 тестов
-cd frontend && npx tsc -b && npm run build
+cd backend && pip install -r requirements-dev.txt
+cd backend && ruff check . && python manage.py test        # 430 тестов
+cd frontend && npm run lint && npx tsc -b && npm run build
 ```
+
+То же выполняет CI на каждый PR.
 
 ---
 

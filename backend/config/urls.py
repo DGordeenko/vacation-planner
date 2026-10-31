@@ -2,47 +2,52 @@ from django.contrib import admin
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from audit.views import AuditLogViewSet
+from company.views import HolidayAdminViewSet
 from config.health import HealthView
 from demo.views import DemoLoginView
 from employees.tags import EmployeeSearchView, TagViewSet
-from schedule.team import (
-    DecisionsView, ExceptionRejectView, TeamCalendarView, TeamEntryDetailView,
-)
-
-from audit.views import AuditLogViewSet
-from company.views import HolidayAdminViewSet
-
 from employees.views import (
-    AuthMeView, EmployeeImportView, InvitationAcceptView, InvitationListView,
-    InvitationReissueView, LoginView,
+    AuthMeView,
+    EmployeeImportView,
+    InvitationAcceptView,
+    InvitationListView,
+    InvitationReissueView,
+    LoginView,
 )
-from sso.views import (
-    AuthMethodsView,
-    NegotiateView,
-    OidcCallbackView,
-    OidcStartView,
+from schedule.team import (
+    DecisionsView,
+    ExceptionRejectView,
+    TeamCalendarView,
+    TeamEntryDetailView,
 )
 from schedule.views import (
     AbsenceReasonViewSet,
     AbsenceSummaryView,
     AbsenceViewSet,
     AmendmentActionView,
-    DayOffViewSet,
-    RvdAdminViewSet,
-    TimeOffBalanceView,
     AmendmentView,
     AnnualSummaryView,
     BalanceView,
     BrandingView,
     CompanySettingsView,
-    RvdTrackingOverridesView,
-    HolidayListView,
+    DayOffViewSet,
     EntryExceptionView,
-    ScheduleApprovalViewSet,
-    SubmitYearView,
+    HolidayListView,
     NotificationViewSet,
+    RvdAdminViewSet,
+    RvdTrackingOverridesView,
+    ScheduleApprovalViewSet,
     ScheduleEntryViewSet,
+    SubmitYearView,
+    TimeOffBalanceView,
     ValidationRuleViewSet,
+)
+from sso.views import (
+    AuthMethodsView,
+    NegotiateView,
+    OidcCallbackView,
+    OidcStartView,
 )
 
 router = DefaultRouter()

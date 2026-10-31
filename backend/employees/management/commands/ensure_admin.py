@@ -84,7 +84,7 @@ class Command(WorkingDatabaseChecks, BaseCommand):
                     hire_date=hire_date,
                     password=password,
                 )
-        except IntegrityError:
+        except IntegrityError as error:
             # Несколько реплик стартуют одновременно (Kubernetes): между проверкой
             # и созданием администратора могла создать соседняя. Это не ошибка.
             if Employee.objects.filter(email__iexact=email).exists():
@@ -94,7 +94,7 @@ class Command(WorkingDatabaseChecks, BaseCommand):
                 return
             raise CommandError(
                 "ensure_admin: не удалось создать администратора — нарушено "
-                "ограничение уникальности в базе")
+                "ограничение уникальности в базе") from error
 
         self.stdout.write(self.style.SUCCESS(
             f"ensure_admin: создан администратор {email} (табельный номер {employee_number})"))

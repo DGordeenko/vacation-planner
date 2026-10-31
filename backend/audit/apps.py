@@ -11,8 +11,12 @@ class AuditConfig(AppConfig):
         from company.models import CompanySettings, Holiday
         from employees.models import Employee, EmployeeTag, OrgUnit, Tag
         from schedule.models import (
-            ApprovalStep, ExceptionApproval, ScheduleApproval,
-            ScheduleEntry, ValidationRule, VacationLedger,
+            ApprovalStep,
+            ExceptionApproval,
+            ScheduleApproval,
+            ScheduleEntry,
+            VacationLedger,
+            ValidationRule,
         )
 
         # Что отслеживаем и как это подписывать в журнале.

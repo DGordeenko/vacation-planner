@@ -2,7 +2,6 @@ from rest_framework import serializers
 
 from company.models import AbsenceReason
 from employees.models import Employee
-from schedule.validators import TaskLinkField
 from schedule.models import (
     ApprovalStep,
     ExceptionApproval,
@@ -11,6 +10,7 @@ from schedule.models import (
     ScheduleEntry,
     ValidationRule,
 )
+from schedule.validators import TaskLinkField
 
 
 class ValidationRuleSerializer(serializers.ModelSerializer):

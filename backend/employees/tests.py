@@ -7,7 +7,7 @@ from django.test import TestCase
 
 from company.models import CompanySettings
 from employees.importers import import_employees
-from employees.models import Employee, OrgUnit, Tag
+from employees.models import Employee, Tag
 from schedule.models import VacationLedger
 
 
@@ -239,6 +239,7 @@ class ImportApiTests(TestCase):
 
     def setUp(self):
         import base64
+
         from rest_framework.test import APIClient
         CompanySettings.get_solo()
         self.client = APIClient()
@@ -294,6 +295,7 @@ class InvitationApiTests(TestCase):
 
     def setUp(self):
         import uuid
+
         from rest_framework.test import APIClient
         CompanySettings.get_solo()
         self.client = APIClient()

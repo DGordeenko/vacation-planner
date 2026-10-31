@@ -2,9 +2,6 @@
 
 from datetime import date
 
-from django.test import TestCase
-from rest_framework.test import APIClient
-
 from schedule import approvals
 from schedule.models import ApprovalStep, Notification, ScheduleApproval, ScheduleEntry
 from schedule.tests_multilevel import FullHierarchyBase

@@ -362,6 +362,7 @@ ABSENCE_FIELDS = {"id", "employee", "employee_name", "date_from", "date_to", "re
 class TimeOffContractTests(TestCase):
     def test_time_off_contract(self):
         from decimal import Decimal
+
         from company.models import AbsenceReason
         from employees.models import OrgUnit
         from schedule import calculations

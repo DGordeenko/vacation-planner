@@ -1,7 +1,7 @@
 # Проверки на каждый push и pull request: тесты бэкенда на PostgreSQL,
 # проверка типов и сборка фронтенда, сборка обоих Docker-образов.
-# Линтеры (ruff, ESLint) добавятся отдельным шагом — docs/tasks/00-skeleton.md,
-# итерация 2: их подключение требует правок кода и согласования.
+# Линтеры: ruff для бэкенда, ESLint для фронтенда (tasks/00-skeleton.md,
+# итерация 2). Тесты — штатным раннером Django, без pytest.
 name: CI
 
 on:
@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   backend:
-    name: Бэкенд — тесты
+    name: Бэкенд — линтер и тесты
     runs-on: ubuntu-latest
     services:
       # Тесты идут на той же СУБД, что и в работе: SQLite прощает то,
@@ -46,15 +46,17 @@ jobs:
         with:
           python-version: "3.12"   # как в backend/Dockerfile
           cache: pip
-          cache-dependency-path: backend/requirements.txt
-      - run: pip install -r requirements.txt
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Линтер (ruff)
+        run: ruff check --output-format=github .
       - name: Нет несозданных миграций
         run: python manage.py makemigrations --check --dry-run
       - name: Тесты
         run: python manage.py test --noinput
 
   frontend:
-    name: Фронтенд — типы и сборка
+    name: Фронтенд — линтер, типы и сборка
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -67,6 +69,8 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - name: Линтер (ESLint)
+        run: npm run lint
       - run: npx tsc -b
       - run: npm run build
 

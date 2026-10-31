@@ -119,7 +119,8 @@ class TagViewSet(viewsets.ModelViewSet):
         tag = self.get_object()
         employee = get_object_or_404(Employee, id=request.data.get("employee_id"))
         if not can_assign(request.user, employee):
-            return Response({"detail": "Назначать теги может руководитель — сотрудникам своей структуры"},
+            return Response({"detail": "Назначать теги может руководитель — "
+                                       "сотрудникам своей структуры"},
                             status=status.HTTP_403_FORBIDDEN)
         link, created = EmployeeTag.objects.get_or_create(
             employee=employee, tag=tag,
@@ -132,7 +133,8 @@ class TagViewSet(viewsets.ModelViewSet):
         tag = self.get_object()
         employee = get_object_or_404(Employee, id=employee_id)
         if not can_assign(request.user, employee):
-            return Response({"detail": "Снимать теги может руководитель — сотрудникам своей структуры"},
+            return Response({"detail": "Снимать теги может руководитель — "
+                                       "сотрудникам своей структуры"},
                             status=status.HTTP_403_FORBIDDEN)
         link = get_object_or_404(EmployeeTag, employee=employee, tag=tag)
         if link.source == Tag.Source.AUTO_ORG:

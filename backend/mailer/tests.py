@@ -1,7 +1,6 @@
 """Тесты почтовых уведомлений."""
 
 from datetime import date
-
 from unittest.mock import patch
 
 from django.core import mail

@@ -1,6 +1,5 @@
 import base64
 import binascii
-
 import uuid
 
 from django.contrib.auth import authenticate

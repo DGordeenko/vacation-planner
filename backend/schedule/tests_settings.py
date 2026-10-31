@@ -84,15 +84,17 @@ class SettingsScreenTests(TestCase):
 
 class PaginationTests(TestCase):
     def test_page_size_parameter_respected_and_capped(self):
-        from company.models import Holiday
         from datetime import timedelta
+
+        from company.models import Holiday
         user = Employee.objects.create_user(
             email="p@s.ru", employee_number="9", full_name="П", hire_date=date(2015, 1, 1))
         for i in range(60):
             Holiday.objects.create(date=date(2027, 1, 1) + timedelta(days=i), name=f"День {i}")
         client = APIClient()
         client.force_authenticate(user)
-        self.assertEqual(len(client.get("/api/v1/admin/holidays/?page_size=100").json()["results"]), 60)
+        page = client.get("/api/v1/admin/holidays/?page_size=100").json()
+        self.assertEqual(len(page["results"]), 60)
         self.assertEqual(len(client.get("/api/v1/admin/holidays/").json()["results"]), 50)
 
 
