@@ -94,3 +94,22 @@ class PaginationTests(TestCase):
         client.force_authenticate(user)
         self.assertEqual(len(client.get("/api/v1/admin/holidays/?page_size=100").json()["results"]), 60)
         self.assertEqual(len(client.get("/api/v1/admin/holidays/").json()["results"]), 50)
+
+
+class NotificationBellTests(TestCase):
+    def test_unread_count_and_mark_all(self):
+        from schedule.models import Notification
+        user = Employee.objects.create_user(
+            email="n@s.ru", employee_number="7", full_name="Н", hire_date=date(2015, 1, 1))
+        other = Employee.objects.create_user(
+            email="o@s.ru", employee_number="8", full_name="О", hire_date=date(2015, 1, 1))
+        for who in (user, user, user, other):
+            Notification.objects.create(
+                recipient=who, notification_type=Notification.NotificationType.APPROVAL_DECIDED,
+                message="м")
+        client = APIClient()
+        client.force_authenticate(user)
+        self.assertEqual(client.get("/api/v1/notifications/unread-count/").json()["count"], 3)
+        self.assertEqual(client.post("/api/v1/notifications/mark-all-read/").json()["updated"], 3)
+        self.assertEqual(client.get("/api/v1/notifications/unread-count/").json()["count"], 0)
+        self.assertFalse(Notification.objects.get(recipient=other).is_read)

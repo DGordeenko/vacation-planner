@@ -611,7 +611,8 @@ body {
 .vs-rule-name { font-weight: 500; font-size: 13.5px; }
 .vs-rule-desc { display: block; }
 .vs-rule-threshold { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
-.vs-rule-threshold input { width: 72px; }
+.vs-rule-threshold input { width: 72px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 13px; background: var(--paper); color: var(--ink); }
+.vs-settings-grid .vs-field { align-content: start; }
 .vs-rule-error { grid-column: 1 / -1; }
 .vs-colour { display: flex; gap: 8px; align-items: center; }
 .vs-colour input[type=color] { width: 40px; height: 34px; padding: 2px; }
@@ -643,3 +644,64 @@ body {
 .vs-rvd-table th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .vs-rvd-link { max-width: 260px; overflow-wrap: anywhere; }
 .vs-nowrap { white-space: nowrap; }
+
+/* Подменю «Управление» */
+.vs-subnav {
+  display: flex; gap: 4px; flex-wrap: wrap; padding: 8px 24px;
+  background: var(--paper); border-bottom: 1px solid var(--line);
+}
+.vs-subnav-item {
+  border: 0; background: none; font: inherit; font-size: 13px; color: var(--muted);
+  padding: 6px 12px; border-radius: 6px; cursor: pointer;
+}
+.vs-subnav-item:hover { color: var(--ink); background: var(--surface); }
+.vs-subnav-item[aria-current="true"] { color: var(--ink); background: var(--surface); font-weight: 500; }
+
+/* Уведомления */
+.vs-bell-box { position: relative; }
+.vs-bell {
+  position: relative; display: grid; place-items: center; width: 36px; height: 36px;
+  border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer;
+}
+.vs-bell:hover, .vs-bell[aria-expanded="true"] { background: var(--surface); color: var(--ink); }
+.vs-bell .vs-badge { position: absolute; top: 0; right: -4px; }
+.vs-bell-panel {
+  position: absolute; right: 0; top: calc(100% + 6px); width: 360px; max-width: calc(100vw - 32px);
+  background: var(--paper); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(22, 32, 43, 0.16); z-index: 50; overflow: hidden;
+}
+.vs-bell-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.vs-bell-empty { padding: 14px; }
+.vs-bell-list { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow: auto; }
+.vs-bell-item {
+  display: grid; gap: 3px; width: 100%; text-align: left; border: 0; background: none;
+  padding: 10px 14px 10px 22px; font: inherit; font-size: 13px; color: var(--muted);
+  border-bottom: 1px solid var(--line); cursor: pointer; position: relative;
+}
+.vs-bell-item:hover { background: var(--surface); }
+.vs-bell-item.unread { color: var(--ink); }
+.vs-bell-item.unread::before {
+  content: ""; position: absolute; left: 9px; top: 15px; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--brand);
+}
+.vs-bell-text { overflow-wrap: anywhere; }
+
+/* Узкий экран: таблицы прокручиваются внутри карточки, а не всей страницей */
+.vs-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.vs-admin-shell > * { min-width: 0; }
+@media (max-width: 720px) {
+  .vs-bar { padding: 10px 16px; gap: 10px; }
+  /* Колокольчик и «Выйти» — в строке с названием, разделы — отдельной
+     прокручиваемой строкой. ФИО скрыто: место нужнее разделам. */
+  .vs-right { display: contents; }
+  .vs-right > .vs-muted { display: none; }
+  .vs-bar > div:nth-child(2) { flex: 1; min-width: 0; }
+  .vs-nav { order: 3; width: 100%; display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; }
+  .vs-nav-item { white-space: nowrap; }
+  .vs-subnav { padding: 6px 12px; flex-wrap: nowrap; overflow-x: auto; }
+  .vs-subnav-item { white-space: nowrap; }
+  .vs-invites-actions { white-space: normal; text-align: left; }
+  .vs-invites-actions .vs-link { display: block; margin: 4px 0 0 !important; }
+  .vs-invites-head .vs-decision-actions { margin-left: 0; }
+  .vs-bell-panel { position: fixed; left: 16px; right: 16px; top: 64px; width: auto; }
+}

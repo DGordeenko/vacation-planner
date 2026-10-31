@@ -107,6 +107,7 @@ export default function RvdAdmin({ onBack }: { onBack: () => void }) {
           : rows.length === 0 ? (
             <div className="vs-muted vs-small">За этот месяц записей нет.</div>
           ) : (
+            <div className="vs-table-scroll">
             <table className="vs-table vs-rvd-table">
               <thead>
                 <tr>
@@ -133,6 +134,7 @@ export default function RvdAdmin({ onBack }: { onBack: () => void }) {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
       </div>
     </div>
