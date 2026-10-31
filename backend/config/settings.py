@@ -75,12 +75,14 @@ REST_FRAMEWORK = {
 
 # --- Почтовые уведомления ----------------------------------------------
 
-MAIL_NOTIFICATIONS_ENABLED = False   # включается после настройки SMTP
-APP_BASE_URL = ""                    # адрес приложения для ссылок в письмах
-DEFAULT_FROM_EMAIL = "vacation@example.com"
-
-# Настройки SMTP задаются при развёртывании:
-# EMAIL_HOST, EMAIL_PORT, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD, EMAIL_USE_TLS
+# Раньше значения были зашиты здесь, и переменные окружения из .env.example
+# ни на что не влияли: в контейнере почту было не включить.
+MAIL_NOTIFICATIONS_ENABLED = os.environ.get(
+    "MAIL_NOTIFICATIONS_ENABLED", "False").lower() in ("1", "true", "yes")
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "")       # адрес приложения для ссылок в письмах
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL") or "vacation@example.com"
+# SMTP задаётся переменными EMAIL_*; сами настройки — в MAILERS ниже
+# (Django 6.1 не принимает старые EMAIL_HOST и т. п. рядом с MAILERS).
 
 # --- Доменная аутентификация -------------------------------------------
 # Значения задаются при развёртывании (переменные окружения / local settings).
@@ -276,8 +278,26 @@ STORAGES = {
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    },
-}
+# Без EMAIL_HOST письма печатаются в лог (разработка, демо); с ним — SMTP.
+# Раньше здесь всегда стоял вывод в консоль: даже включённая почта никуда
+# не уходила.
+if os.environ.get("EMAIL_HOST"):
+    MAILERS = {
+        'default': {
+            'BACKEND': 'django.core.mail.backends.smtp.EmailBackend',
+            'OPTIONS': {
+                'host': os.environ["EMAIL_HOST"],
+                'port': int(os.environ.get("EMAIL_PORT") or "587"),
+                'username': os.environ.get("EMAIL_HOST_USER", ""),
+                'password': os.environ.get("EMAIL_HOST_PASSWORD", ""),
+                'use_tls': os.environ.get("EMAIL_USE_TLS", "True").lower() in ("1", "true", "yes"),
+                'timeout': 30,
+            },
+        },
+    }
+else:
+    MAILERS = {
+        'default': {
+            'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+        },
+    }
