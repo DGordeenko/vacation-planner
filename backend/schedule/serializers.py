@@ -2,7 +2,6 @@ from rest_framework import serializers
 
 from company.models import AbsenceReason
 from employees.models import Employee
-from schedule.validators import TaskLinkField
 from schedule.models import (
     ApprovalStep,
     ExceptionApproval,
@@ -11,13 +10,27 @@ from schedule.models import (
     ScheduleEntry,
     ValidationRule,
 )
+from schedule.validators import TaskLinkField
 
 
 class ValidationRuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = ValidationRule
         fields = ["code", "name", "description", "is_enabled", "threshold_value", "approver_level"]
-        read_only_fields = ["code"]
+        read_only_fields = ["code", "name", "description"]
+
+    def validate_threshold_value(self, value):
+        # У правил вроде «захват выходных» порога нет: число там ничего
+        # не значит, а пустой порог у правила с порогом выключил бы проверку.
+        had_threshold = self.instance is not None and self.instance.threshold_value is not None
+        if self.instance is not None and not had_threshold and value is not None:
+            raise serializers.ValidationError("У этого правила нет порога")
+        if had_threshold and value is None:
+            raise serializers.ValidationError(
+                "Порог обязателен. Чтобы не проверять правило, выключите его")
+        if value is not None and value < 0:
+            raise serializers.ValidationError("Порог не может быть отрицательным")
+        return value
 
 
 class ColleagueOnLeaveSerializer(serializers.Serializer):
@@ -134,7 +147,9 @@ class ExceptionApprovalSerializer(serializers.ModelSerializer):
 
 
 class RvdSerializer(serializers.ModelSerializer):
-    task_link = TaskLinkField()
+    # По ФЗ ссылка на задачу у РВД обязательна (решение от 31.10.2026).
+    task_link = TaskLinkField(required=True, allow_blank=False, error_messages={
+        "required": "Укажите ссылку на задачу", "blank": "Укажите ссылку на задачу"})
     employee_name = serializers.CharField(source="employee.full_name", read_only=True)
     employee_number = serializers.CharField(
         source="employee.employee_number", read_only=True)
@@ -154,10 +169,32 @@ class RvdSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("В сутках не больше 24 часов")
         return value
 
-    def validate_rvd_compensation_type(self, value):
-        if not value:
-            raise serializers.ValidationError("Укажите тип оплаты")
-        return value
+    rvd_compensation_type = serializers.ChoiceField(
+        choices=ScheduleEntry.RvdCompensation.choices, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        from schedule import calculations
+
+        employee = attrs.get("employee") or getattr(self.instance, "employee", None)
+        day = attrs.get("date_from") or getattr(self.instance, "date_from", None)
+        errors = {}
+        # РВД — работа в выходной или праздник; на рабочий день это ошибка
+        # ввода (решение от 31.10.2026).
+        if day and not calculations.is_rest_day(day):
+            errors["date_from"] = (f"{day:%d.%m.%Y} — рабочий день по производственному "
+                                   "календарю. РВД вносится на выходной или праздник")
+        if employee:
+            tracked = calculations.rvd_compensation_tracked(employee)
+            compensation = attrs.get("rvd_compensation_type",
+                                     getattr(self.instance, "rvd_compensation_type", ""))
+            if tracked and not compensation:
+                errors["rvd_compensation_type"] = "Укажите вид компенсации"
+            if not tracked:
+                # Учёт компенсации выключен: вид не хранится, отгул не начисляется.
+                attrs["rvd_compensation_type"] = ""
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
 
 class AbsenceReasonSerializer(serializers.ModelSerializer):
@@ -178,12 +215,15 @@ class AbsenceSerializer(serializers.ModelSerializer):
     reason_name = serializers.CharField(source="reason.name", read_only=True)
     days = serializers.SerializerMethodField()
     recorded_by = serializers.CharField(source="created_by.full_name", read_only=True)
+    # Удалить запись может её автор: интерфейсу нужен идентификатор, а не имя —
+    # у однофамильцев имена совпадают.
+    recorded_by_id = serializers.UUIDField(source="created_by_id", read_only=True)
 
     class Meta:
         model = ScheduleEntry
         fields = ["id", "employee", "employee_name", "date_from", "date_to",
                   "reason", "reason_name", "custom_reason_text", "days",
-                  "recorded_by", "created_at"]
+                  "recorded_by", "recorded_by_id", "created_at"]
 
     def get_days(self, obj):
         from schedule.calculations import absence_days

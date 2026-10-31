@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from company.models import CompanySettings, Holiday
 from employees.models import Employee, EmployeeTag, OrgUnit, Tag
 from schedule import calculations
-from schedule.models import ScheduleEntry, ValidationRule, VacationLedger
+from schedule.models import ScheduleEntry, VacationLedger, ValidationRule
 
 
 def seed_rules():

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, persistToken } from "../api";
+import { api, ApiError, persistToken } from "../api";
 import type { AuthMethods, DemoRoleCode } from "../types";
 
 export default function Login({ onSuccess }: { onSuccess: () => void }) {
@@ -9,6 +9,10 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [demoOpen, setDemoOpen] = useState(false);
+  const [invite, setInvite] = useState(
+    () => new URLSearchParams(window.location.search).get("invite"));
+  const [repeat, setRepeat] = useState("");
+  const [inviteDead, setInviteDead] = useState(false);
 
   useEffect(() => {
     api.authMethods().then(setMethods).catch(() => setMethods({
@@ -87,6 +91,76 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function acceptInvite() {
+    if (!invite) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.acceptInvitation(invite, password);
+      persistToken(result.token);
+      window.history.replaceState({}, "", window.location.pathname);
+      onSuccess();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) setInviteDead(true);
+      else setError(err instanceof Error ? err.message : "Не удалось задать пароль");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function leaveInvite() {
+    window.history.replaceState({}, "", window.location.pathname);
+    setInvite(null); setPassword(""); setRepeat(""); setError(null); setInviteDead(false);
+  }
+
+  if (invite) {
+    const mismatch = repeat.length > 0 && repeat !== password;
+    return (
+      <div className="vs-login">
+        <div className="vs-card vs-login-card">
+          <h1>Добро пожаловать</h1>
+          {inviteDead ? (
+            <>
+              <p className="vs-muted">
+                Ссылка недействительна: ею уже воспользовались или администратор
+                выдал вместо неё новую. Если пароль уже задан — войдите с ним,
+                если нет — попросите администратора прислать новую ссылку.
+              </p>
+              <button className="vs-btn primary block" onClick={leaveInvite}>
+                Перейти ко входу
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="vs-muted vs-small">
+                Придумайте пароль для входа в график отпусков. Не короче
+                8 символов, не только из цифр и не похожий на имя или почту.
+              </p>
+              <label className="vs-field">
+                Пароль
+                <input type="password" value={password} autoComplete="new-password"
+                  onChange={(e) => setPassword(e.target.value)} />
+              </label>
+              <label className="vs-field">
+                Пароль ещё раз
+                <input type="password" value={repeat} autoComplete="new-password"
+                  onChange={(e) => setRepeat(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !mismatch && password
+                    && acceptInvite()} />
+              </label>
+              {mismatch && <div className="vs-muted vs-small">Пароли не совпадают</div>}
+              <button className="vs-btn primary block" onClick={acceptInvite}
+                disabled={busy || !password || repeat !== password}>
+                {busy ? "Сохраняем…" : "Задать пароль и войти"}
+              </button>
+              {error && <div className="vs-issue"><div className="vs-issue-text">{error}</div></div>}
+            </>
+          )}
+        </div>
+      </div>
+    );
   }
 
   const demo = methods?.demo.enabled ? methods.demo : null;

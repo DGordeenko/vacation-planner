@@ -252,7 +252,7 @@ export default function HolidayAdmin({ onBack }: { onBack: () => void }) {
           {rows.length > 0 && (
             <div className="vs-card">
               <h2>Дни календаря {year} года</h2>
-              <table className="vs-table">
+              <div className="vs-table-scroll"><table className="vs-table">
                 <tbody>
                   {rows.map((row) => (
                     <tr key={row.id}>
@@ -273,7 +273,7 @@ export default function HolidayAdmin({ onBack }: { onBack: () => void }) {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             </div>
           )}
         </main>

@@ -189,7 +189,8 @@ class DayOffApiTests(DayOffBase):
                  "work_hours": "8", "rvd_compensation_type": "pay_plus_day_off",
                  "task_link": "https://tracker/TASK-1"},
                 {"employee": str(self.employee.id), "date_from": "2027-03-13",
-                 "work_hours": "4", "rvd_compensation_type": "double_pay"},
+                 "work_hours": "4", "rvd_compensation_type": "double_pay",
+                 "task_link": "https://tracker/TASK-2"},
             ]}, format="json")
         self.assertEqual(response.status_code, 201, response.content)
         self.assertEqual(self.balance(), Decimal("8.00"))
@@ -319,5 +320,147 @@ class TaskLinkTests(DayOffBase):
     def test_garbage_rejected(self):
         self.assertEqual(self._post("просто текст").status_code, 400)
 
-    def test_empty_allowed(self):
-        self.assertEqual(self._post("").status_code, 201)
+    def test_empty_rejected(self):
+        """По ФЗ ссылка у РВД обязательна (решение от 31.10.2026)."""
+        response = self._post("")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("task_link", response.json())
+
+
+class DayOffDecisionScreenTests(DayOffBase):
+    """Отгул на экране «Требует моего решения» у руководителя."""
+
+    def request_day_off(self, day="2027-03-10"):
+        self.client.force_authenticate(self.employee)
+        return self.client.post("/api/v1/day-offs/", {"date_from": day}, format="json")
+
+    def test_request_listed_for_manager_with_balance(self):
+        self.add_rvd(date(2027, 3, 6), 8, ScheduleEntry.RvdCompensation.PAY_PLUS_DAY_OFF)
+        entry_id = self.request_day_off().json()["id"]
+        self.client.force_authenticate(self.chief)
+        body = self.client.get("/api/v1/decisions/").json()
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["day_offs"][0]["id"], entry_id)
+        self.assertEqual(body["day_offs"][0]["employee_name"], "Сотрудник")
+        self.assertEqual(body["day_offs"][0]["balance"]["available_days"], 1)
+        self.client.post(f"/api/v1/day-offs/{entry_id}/approve/")
+        self.assertEqual(self.client.get("/api/v1/decisions/").json()["day_offs"], [])
+
+    def test_not_listed_for_others(self):
+        self.add_rvd(date(2027, 3, 6), 8, ScheduleEntry.RvdCompensation.PAY_PLUS_DAY_OFF)
+        self.request_day_off()
+        self.client.force_authenticate(self.admin)  # у сотрудника есть руководитель
+        self.assertEqual(self.client.get("/api/v1/decisions/").json()["day_offs"], [])
+
+    def test_same_date_can_be_requested_after_rejection(self):
+        self.add_rvd(date(2027, 3, 6), 8, ScheduleEntry.RvdCompensation.PAY_PLUS_DAY_OFF)
+        entry_id = self.request_day_off().json()["id"]
+        self.client.force_authenticate(self.chief)
+        self.client.post(f"/api/v1/day-offs/{entry_id}/reject/", {"comment": "Релиз"},
+                         format="json")
+        self.assertEqual(self.request_day_off().status_code, 201)
+
+
+class TimeOffScreenTests(DayOffBase):
+    def test_pending_day_off_reduces_free_days(self):
+        self.add_rvd(date(2027, 3, 6), 16, ScheduleEntry.RvdCompensation.PAY_PLUS_DAY_OFF)
+        self.client.force_authenticate(self.employee)
+        url = f"/api/v1/employees/{self.employee.id}/time-off-balance/"
+        self.assertEqual(self.client.get(url).json()["free_days"], 2)
+        self.client.post("/api/v1/day-offs/", {"date_from": "2027-03-10"}, format="json")
+        body = self.client.get(url).json()
+        self.assertEqual((body["available_days"], body["pending_days"], body["free_days"]),
+                         (2, 1, 1))
+
+    def test_own_day_offs_filter(self):
+        self.add_rvd(date(2027, 3, 6), 8, ScheduleEntry.RvdCompensation.PAY_PLUS_DAY_OFF)
+        self.client.force_authenticate(self.employee)
+        self.client.post("/api/v1/day-offs/", {"date_from": "2027-03-10"}, format="json")
+        self.client.force_authenticate(self.chief)
+        own = self.client.get(f"/api/v1/day-offs/?employee_id={self.chief.id}").json()
+        team = self.client.get(f"/api/v1/day-offs/?employee_id={self.employee.id}").json()
+        self.assertEqual((own["count"], team["count"]), (0, 1))
+
+
+class RvdRulesTests(DayOffBase):
+    """Решения от 31.10.2026: ссылка обязательна, РВД только в нерабочий день,
+    учёт компенсации — настройка с переопределением по структуре."""
+
+    def post(self, **extra):
+        self.client.force_authenticate(self.admin)
+        data = {"employee": str(self.employee.id), "date_from": "2027-03-06",
+                "work_hours": "8", "rvd_compensation_type": "pay_plus_day_off",
+                "task_link": "https://jira/OPS-1"}
+        data.update(extra)
+        return self.client.post("/api/v1/admin/rvd/", data, format="json")
+
+    def test_working_day_rejected(self):
+        response = self.post(date_from="2027-03-10")  # среда
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("date_from", response.json())
+
+    def test_holiday_on_weekday_accepted_transferred_saturday_rejected(self):
+        Holiday.objects.create(date=date(2027, 3, 8), name="8 Марта",
+                               day_type=Holiday.DayType.HOLIDAY)
+        Holiday.objects.create(date=date(2027, 3, 13), name="Перенос",
+                               day_type=Holiday.DayType.TRANSFERRED_WORKDAY)
+        response = self.post(date_from="2027-03-08")
+        self.assertEqual(response.status_code, 201, response.content.decode())
+        self.assertEqual(self.post(date_from="2027-03-13").status_code, 400)
+
+    def test_compensation_required_when_tracked(self):
+        response = self.post(rvd_compensation_type="")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("rvd_compensation_type", response.json())
+
+    def test_tracking_off_for_unit_drops_compensation_and_accrual(self):
+        self.group.rvd_compensation_tracking_override = False
+        self.group.save()
+        response = self.post(rvd_compensation_type="")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["rvd_compensation_type"], "")
+        self.assertEqual(self.balance(), Decimal("0"))
+
+    def test_employee_override_beats_unit_and_company(self):
+        settings_row = CompanySettings.get_solo()
+        settings_row.rvd_compensation_tracking_enabled = False
+        settings_row.save()
+        self.department.rvd_compensation_tracking_override = False
+        self.department.save()
+        self.employee.rvd_compensation_tracking_override = True
+        self.employee.save()
+        self.assertTrue(calculations.rvd_compensation_tracked(self.employee))
+        self.assertEqual(self.post().status_code, 201)
+        self.assertEqual(self.balance(), Decimal("8.00"))
+
+    def test_tracking_status_endpoint(self):
+        self.group.rvd_compensation_tracking_override = False
+        self.group.save()
+        self.client.force_authenticate(self.admin)
+        body = self.client.get(f"/api/v1/admin/rvd/tracking/?employee_id={self.employee.id}").json()
+        self.assertEqual(body, {"tracked": False, "source": "Группа Р"})
+
+
+class RvdTrackingOverridesApiTests(DayOffBase):
+    def test_admin_sets_and_clears_unit_and_employee_overrides(self):
+        self.client.force_authenticate(self.admin)
+        url = "/api/v1/settings/rvd-tracking/"
+        body = self.client.post(url, {"kind": "unit", "id": str(self.group.id), "value": False},
+                                format="json").json()
+        self.assertFalse(next(u for u in body["units"] if u["name"] == "Группа Р")["value"])
+        self.assertIn("Отдел Р / Группа Р", [u["path"] for u in body["units"]])
+        self.employee.refresh_from_db()
+        self.assertFalse(calculations.rvd_compensation_tracked(self.employee))
+        body = self.client.post(url, {"kind": "employee", "id": str(self.employee.id),
+                                      "value": True}, format="json").json()
+        self.assertEqual([e["name"] for e in body["employees"]], ["Сотрудник"])
+        self.employee.refresh_from_db()
+        self.assertTrue(calculations.rvd_compensation_tracked(self.employee))
+        self.client.post(url, {"kind": "employee", "id": str(self.employee.id), "value": None},
+                         format="json")
+        self.employee.refresh_from_db()
+        self.assertFalse(calculations.rvd_compensation_tracked(self.employee))
+
+    def test_only_admin(self):
+        self.client.force_authenticate(self.chief)
+        self.assertEqual(self.client.get("/api/v1/settings/rvd-tracking/").status_code, 403)

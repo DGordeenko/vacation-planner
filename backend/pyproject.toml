@@ -1,0 +1,23 @@
+# Настройки инструментов разработки. Зависимости приложения — в requirements.txt,
+# инструментов — в requirements-dev.txt.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+# E/W — стиль PEP 8, F — ошибки (неиспользуемое, неопределённое),
+# I — порядок импортов, B — типичные ошибки (изменяемые значения по умолчанию,
+# потерянные исключения), DJ — правила Django.
+select = ["E", "W", "F", "I", "B", "DJ"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["audit", "company", "config", "demo", "employees", "mailer",
+                     "schedule", "sso"]
+
+[tool.ruff.lint.per-file-ignores]
+# Разовый скрипт проверки импорта: настраивает Django до импорта моделей.
+"run_import_check.py" = ["E402", "E501"]
+# Образцы CSV: строка заголовка выгрузки длиннее 100 символов и переносу не подлежит.
+"employees/tests.py" = ["E501"]

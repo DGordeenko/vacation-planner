@@ -1,5 +1,6 @@
 import re
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import Q
@@ -20,12 +21,12 @@ from schedule.models import (
     ValidationRule,
 )
 from schedule.serializers import (
-    NotificationSerializer,
-    ExceptionApprovalSerializer,
-    ScheduleApprovalSerializer,
     AbsenceReasonSerializer,
     AbsenceSerializer,
+    ExceptionApprovalSerializer,
+    NotificationSerializer,
     RvdSerializer,
+    ScheduleApprovalSerializer,
     ScheduleEntrySerializer,
     ValidateRequestSerializer,
     ValidationRuleSerializer,
@@ -147,7 +148,17 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NotificationSerializer
 
     def get_queryset(self):
-        return Notification.objects.filter(recipient=self.request.user)
+        return Notification.objects.filter(recipient=self.request.user).order_by("-created_at")
+
+    @action(detail=False, methods=["get"], url_path="unread-count")
+    def unread_count(self, request):
+        """Счётчик в шапке: считается по всем, а не по загруженной странице."""
+        return Response({"count": self.get_queryset().filter(is_read=False).count()})
+
+    @action(detail=False, methods=["post"], url_path="mark-all-read")
+    def mark_all_read(self, request):
+        updated = self.get_queryset().filter(is_read=False).update(is_read=True)
+        return Response({"updated": updated})
 
     @action(detail=True, methods=["post"], url_path="mark-read")
     def mark_read(self, request, pk=None):
@@ -232,7 +243,8 @@ class SubmitYearView(APIView):
         if employee != request.user and not request.user.is_admin:
             return Response({"detail": "Нельзя отправить чужой график"},
                             status=status.HTTP_403_FORBIDDEN)
-        year = int(request.query_params.get("year") or request.data.get("year") or date.today().year)
+        year = int(request.query_params.get("year") or request.data.get("year")
+                   or date.today().year)
         try:
             approval = approvals.submit_year(employee, year, request.user)
         except approvals.ApprovalError as error:
@@ -321,6 +333,82 @@ class HolidayListView(APIView):
         ])
 
 
+# Допустимые значения настроек: за пределами — заведомая ошибка ввода,
+# а не осознанное решение (норма 600 дней, 0 уровней согласования).
+SETTINGS_LIMITS = {
+    "annual_vacation_norm_days": (Decimal("1"), Decimal("90")),
+    "monthly_accrual_rate": (Decimal("0"), Decimal("10")),
+    "approval_levels": (1, 5),
+    "workday_hours": (Decimal("1"), Decimal("24")),
+}
+
+
+def _settings_payload(row):
+    return {
+        "annual_vacation_norm_days": float(row.annual_vacation_norm_days),
+        "monthly_accrual_rate": float(row.monthly_accrual_rate),
+        "approval_levels": row.approval_levels,
+        "workday_hours": float(row.workday_hours),
+        "rvd_compensation_tracking_enabled": row.rvd_compensation_tracking_enabled,
+    }
+
+
+class CompanySettingsView(APIView):
+    """Глобальные настройки расчётов. Читают все, меняет администратор.
+
+    Изменение действует сразу и на всех: баланс не хранится, а считается,
+    поэтому новая ставка начисления пересчитывает остатки задним числом.
+    Интерфейс предупреждает об этом перед сохранением.
+    """
+
+    def get(self, request):
+        return Response(_settings_payload(CompanySettings.get_solo()))
+
+    def patch(self, request):
+        if not request.user.is_admin:
+            return Response({"detail": "Только администратор"},
+                            status=status.HTTP_403_FORBIDDEN)
+        row = CompanySettings.get_solo()
+        errors = {}
+        for field, (low, high) in SETTINGS_LIMITS.items():
+            if field not in request.data:
+                continue
+            raw = request.data[field]
+            try:
+                value = int(raw) if field == "approval_levels" else Decimal(str(raw))
+                if field == "approval_levels" and str(raw).strip() != str(value):
+                    raise ValueError
+            except (InvalidOperation, ValueError, TypeError):
+                errors[field] = ["Ожидается число"]
+                continue
+            if not low <= value <= high:
+                errors[field] = [f"Допустимо от {low} до {high}"]
+                continue
+            setattr(row, field, value)
+        flag = request.data.get("rvd_compensation_tracking_enabled")
+        if flag is not None:
+            if not isinstance(flag, bool):
+                errors["rvd_compensation_tracking_enabled"] = ["Ожидается да или нет"]
+            else:
+                row.rvd_compensation_tracking_enabled = flag
+        if errors:
+            return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+        row.save()
+        return Response(_settings_payload(row))
+
+
+def _luminance(hex_colour):
+    channels = [int(hex_colour[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    linear = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def contrast_ratio(first, second):
+    """Контрастность по WCAG 2.1: от 1 (одинаковые) до 21 (чёрный на белом)."""
+    light, dark = sorted((_luminance(first), _luminance(second)), reverse=True)
+    return (light + 0.05) / (dark + 0.05)
+
+
 class BrandingView(APIView):
     """Оформление под компанию. Читают все, меняет администратор."""
 
@@ -345,6 +433,23 @@ class BrandingView(APIView):
         colour = request.data.get("brand_primary_color")
         if colour and not re.fullmatch(r"#[0-9A-Fa-f]{6}", colour):
             return Response({"errors": {"brand_primary_color": ["Ожидается цвет вида #RRGGBB"]}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        text = request.data.get("brand_contrast_color", row.brand_contrast_color) or "#FFFFFF"
+        if not re.fullmatch(r"#[0-9A-Fa-f]{6}", text):
+            return Response({"errors": {"brand_contrast_color": ["Ожидается цвет вида #RRGGBB"]}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # Цвет бренда — фон кнопок с текстом: при контрасте ниже 4.5 (WCAG AA)
+        # надписи на кнопках плохо читаются (06-ux-branding.md).
+        base = colour or row.brand_primary_color
+        if re.fullmatch(r"#[0-9A-Fa-f]{6}", base or "") and contrast_ratio(base, text) < 4.5:
+            ratio = contrast_ratio(base, text)
+            return Response({"errors": {"brand_primary_color": [
+                f"Текст на кнопках будет плохо читаться: контраст {ratio:.1f}, "
+                "нужно не меньше 4.5. Выберите цвет темнее"]}},
+                status=status.HTTP_400_BAD_REQUEST)
+        name = request.data.get("organization_name")
+        if name is not None and not str(name).strip():
+            return Response({"errors": {"organization_name": ["Название не может быть пустым"]}},
                             status=status.HTTP_400_BAD_REQUEST)
         for field in allowed:
             if field in request.data:
@@ -431,6 +536,24 @@ class RvdAdminViewSet(viewsets.ModelViewSet):
         entry = serializer.save()
         calculations.sync_rvd_accrual(entry)
 
+    @action(detail=False, methods=["get"], url_path="tracking")
+    def tracking(self, request):
+        """Ведётся ли учёт компенсации для сотрудника и чья настройка действует —
+        форма ввода скрывает выбор компенсации, когда учёт выключен."""
+        employee = get_object_or_404(Employee, id=request.query_params.get("employee_id"))
+        source = "компания"
+        if employee.rvd_compensation_tracking_override is not None:
+            source = "сотрудник"
+        else:
+            unit = employee.org_unit
+            while unit is not None:
+                if unit.rvd_compensation_tracking_override is not None:
+                    source = unit.name
+                    break
+                unit = unit.parent
+        return Response({"tracked": calculations.rvd_compensation_tracked(employee),
+                         "source": source})
+
     @action(detail=False, methods=["post"], url_path="bulk")
     def bulk(self, request):
         """Ввод РВД сразу по нескольким сотрудникам за месяц."""
@@ -472,6 +595,13 @@ class TimeOffBalanceView(APIView):
         employee = get_object_or_404(Employee, id=employee_id)
 
         summary = calculations.time_off_summary(employee)
+        # Отгулы на согласовании часы ещё не списали, но новый отгул под них
+        # уже не дадут (validate_day_off): показываем, сколько можно попросить.
+        pending = ScheduleEntry.objects.filter(
+            employee=employee, record_type=ScheduleEntry.RecordType.DAY_OFF,
+            status=ScheduleEntry.Status.PENDING_APPROVAL).count()
+        summary["pending_days"] = pending
+        summary["free_days"] = max(summary["available_days"] - pending, 0)
         summary["history"] = [
             {
                 "date": row.entry_date,
@@ -490,10 +620,14 @@ class DayOffViewSet(viewsets.ModelViewSet):
     serializer_class = ScheduleEntrySerializer
 
     def get_queryset(self):
-        return ScheduleEntry.objects.filter(
+        queryset = ScheduleEntry.objects.filter(
             record_type=ScheduleEntry.RecordType.DAY_OFF,
             employee_id__in=self.request.user.visible_employee_ids(),
         ).select_related("employee")
+        employee_id = self.request.query_params.get("employee_id")
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+        return queryset.order_by("-date_from")
 
     @action(detail=False, methods=["post"])
     def validate(self, request):
@@ -703,3 +837,63 @@ class AbsenceSummaryView(APIView):
         employee = get_object_or_404(Employee, id=employee_id)
         year = int(request.query_params.get("year") or date.today().year)
         return Response(calculations.absence_summary(employee, year))
+
+
+class RvdTrackingOverridesView(APIView):
+    """Исключения из общей настройки учёта компенсации РВД (ФЗ, раздел РВД).
+
+    GET — подразделения (все, для выбора) и действующие исключения сотрудников.
+    POST {kind: "unit"|"employee", id, value: true|false|null} — задать или
+    снять исключение; null — «как выше по структуре».
+    """
+
+    def _deny(self, request):
+        if not request.user.is_admin:
+            return Response({"detail": "Только администратор"}, status=status.HTTP_403_FORBIDDEN)
+        return None
+
+    def get(self, request):
+        denied = self._deny(request)
+        if denied:
+            return denied
+        from employees.models import OrgUnit
+
+        def path(unit):
+            names = []
+            while unit is not None:
+                names.append(unit.name)
+                unit = unit.parent
+            return " / ".join(reversed(names))
+
+        units = OrgUnit.objects.select_related("parent").all()
+        return Response({
+            "company": CompanySettings.get_solo().rvd_compensation_tracking_enabled,
+            "units": sorted(({"id": str(u.id), "name": u.name, "path": path(u),
+                              "value": u.rvd_compensation_tracking_override} for u in units),
+                            key=lambda r: r["path"]),
+            "employees": [{"id": str(e.id), "name": e.full_name,
+                           "org_unit": e.org_unit.name if e.org_unit else None,
+                           "value": e.rvd_compensation_tracking_override}
+                          for e in Employee.objects.filter(
+                              rvd_compensation_tracking_override__isnull=False)
+                          .select_related("org_unit").order_by("full_name")],
+        })
+
+    def post(self, request):
+        denied = self._deny(request)
+        if denied:
+            return denied
+        from employees.models import OrgUnit
+
+        kind, value = request.data.get("kind"), request.data.get("value")
+        if value is not None and not isinstance(value, bool):
+            return Response({"detail": "Значение: да, нет или как выше"},
+                            status=status.HTTP_400_BAD_REQUEST)
+        model = {"unit": OrgUnit, "employee": Employee}.get(kind)
+        if model is None:
+            return Response({"detail": "Укажите подразделение или сотрудника"},
+                            status=status.HTTP_400_BAD_REQUEST)
+        target = get_object_or_404(model, id=request.data.get("id"))
+        target.rvd_compensation_tracking_override = value
+        target.save(update_fields=["rvd_compensation_tracking_override"])
+        return self.get(request)

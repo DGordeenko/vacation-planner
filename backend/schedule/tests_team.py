@@ -78,7 +78,8 @@ class DecisionsTests(ApprovalBase):
         self.assertIn("не подтвердил отпуск 02.03.2027—04.03.2027: В эти даты релиз",
                       note["message"])
         # Отклонённый отпуск сотрудник может убрать из графика.
-        self.assertEqual(self.client.delete(f"/api/v1/schedule-entries/{entry_id}/").status_code, 204)
+        response = self.client.delete(f"/api/v1/schedule-entries/{entry_id}/")
+        self.assertEqual(response.status_code, 204)
         self.client.force_authenticate(self.chief)
         self.assertEqual(self.client.get("/api/v1/decisions/").json()["count"], 0)
 

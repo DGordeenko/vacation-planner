@@ -1,0 +1,18 @@
+# Один домен: nginx фронтенда сам проксирует /api/ на бэкенд, поэтому
+# всё направляется на frontend. TLS — по правилам кластера (cert-manager и т. п.).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vacation
+spec:
+  rules:
+    - host: vacation.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: frontend, port: { number: 8080 } }
+  tls:
+    - hosts: [vacation.example.com]
+      secretName: vacation-tls

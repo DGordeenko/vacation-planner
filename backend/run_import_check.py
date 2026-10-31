@@ -1,10 +1,13 @@
-import os, django
+import os
+
+import django
+
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
-from employees.importers import import_employees
-from employees.models import Employee, OrgUnit, EmployeeTag
 from company.models import CompanySettings
+from employees.importers import import_employees
+from employees.models import Employee, EmployeeTag, OrgUnit
 
 CompanySettings.get_solo()
 

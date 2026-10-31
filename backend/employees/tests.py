@@ -7,7 +7,7 @@ from django.test import TestCase
 
 from company.models import CompanySettings
 from employees.importers import import_employees
-from employees.models import Employee, OrgUnit, Tag
+from employees.models import Employee, Tag
 from schedule.models import VacationLedger
 
 
@@ -232,3 +232,129 @@ class ImportDryRunTests(TestCase):
         self.assertTrue(report.applied)
         self.assertTrue(any("Остаток отпуска не указан" in w.message
                             for w in report.warnings))
+
+
+class ImportApiTests(TestCase):
+    """Экран загрузки: предпросмотр с итогами, затем применение (UX 2.5)."""
+
+    def setUp(self):
+        import base64
+
+        from rest_framework.test import APIClient
+        CompanySettings.get_solo()
+        self.client = APIClient()
+        self.admin = Employee.objects.create_user(
+            email="adm@corp.ru", employee_number="0001", full_name="Админ",
+            hire_date=date(2015, 1, 1))
+        self.admin.is_admin = True
+        self.admin.save()
+        self.encode = lambda text: base64.b64encode(text.encode("utf-8")).decode()
+
+    def post(self, text, dry_run):
+        self.client.force_authenticate(self.admin)
+        return self.client.post("/api/v1/employees/import-csv/",
+                                {"content": self.encode(text), "dry_run": dry_run},
+                                format="json")
+
+    def test_preview_counts_without_writing(self):
+        response = self.post(CLEAN, dry_run=True)
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual((body["created"], body["updated"], body["applied"]), (3, 0, False))
+        self.assertFalse(Employee.objects.filter(employee_number="1001").exists())
+
+    def test_apply_writes(self):
+        body = self.post(CLEAN, dry_run=False).json()
+        self.assertTrue(body["applied"])
+        self.assertEqual(Employee.objects.filter(employee_number__in=["1001", "1002", "1003"])
+                         .count(), 3)
+        self.assertEqual(self.post(CLEAN, dry_run=True).json()["updated"], 3)
+
+    def test_problems_return_conflict(self):
+        response = self.post(CLEAN.replace("eng1@corp.ru", "без-собаки"), dry_run=True)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["problems"][0]["row"], 4)
+
+    def test_only_admin(self):
+        self.client.force_authenticate(Employee.objects.create_user(
+            email="u@corp.ru", employee_number="0002", full_name="Пользователь",
+            hire_date=date(2015, 1, 1)))
+        response = self.client.post("/api/v1/employees/import-csv/",
+                                    {"content": self.encode(CLEAN)}, format="json")
+        self.assertEqual(response.status_code, 403)
+
+    def test_garbage_is_rejected(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post("/api/v1/employees/import-csv/",
+                                    {"content": "не base64!"}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+
+class InvitationApiTests(TestCase):
+    """Приглашения: список для рассылки, перевыпуск, вход по ссылке."""
+
+    def setUp(self):
+        import uuid
+
+        from rest_framework.test import APIClient
+        CompanySettings.get_solo()
+        self.client = APIClient()
+        self.admin = Employee.objects.create_user(
+            email="adm@corp.ru", employee_number="0001", full_name="Админ",
+            hire_date=date(2015, 1, 1))
+        self.admin.is_admin = True
+        self.admin.save()
+        self.invited = Employee.objects.create_user(
+            email="new@corp.ru", employee_number="0002", full_name="Новый Сотрудник",
+            hire_date=date(2020, 1, 1))
+        self.invited.invitation_token = uuid.uuid4()
+        self.invited.save()
+        self.fired = Employee.objects.create_user(
+            email="old@corp.ru", employee_number="0003", full_name="Уволенный",
+            hire_date=date(2010, 1, 1), status=Employee.Status.INACTIVE)
+        self.fired.invitation_token = uuid.uuid4()
+        self.fired.save()
+
+    def accept(self, token, password):
+        self.client.force_authenticate(None)
+        return self.client.post("/api/v1/auth/accept-invitation/",
+                                {"invitation_token": str(token), "password": password},
+                                format="json")
+
+    def test_list_only_active_pending(self):
+        self.client.force_authenticate(self.admin)
+        rows = self.client.get("/api/v1/admin/invitations/").json()
+        self.assertEqual([r["full_name"] for r in rows], ["Новый Сотрудник"])
+        self.assertEqual(rows[0]["invitation_token"], str(self.invited.invitation_token))
+
+    def test_list_is_admin_only(self):
+        self.client.force_authenticate(self.invited)
+        self.assertEqual(self.client.get("/api/v1/admin/invitations/").status_code, 403)
+
+    def test_accept_sets_password_and_leaves_list(self):
+        response = self.accept(self.invited.invitation_token, "Otpusk-2027!")
+        self.assertEqual(response.status_code, 200)
+        self.invited.refresh_from_db()
+        self.assertTrue(self.invited.check_password("Otpusk-2027!"))
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.get("/api/v1/admin/invitations/").json(), [])
+
+    def test_weak_password_rejected_and_link_kept(self):
+        response = self.accept(self.invited.invitation_token, "12345")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "weak_password")
+        self.invited.refresh_from_db()
+        self.assertIsNotNone(self.invited.invitation_token)
+
+    def test_fired_and_garbage_tokens_invalid(self):
+        self.assertEqual(self.accept(self.fired.invitation_token, "Otpusk-2027!").status_code,
+                         404)
+        self.assertEqual(self.accept("не-токен", "Otpusk-2027!").status_code, 404)
+
+    def test_reissue_invalidates_old_link(self):
+        old = self.invited.invitation_token
+        self.client.force_authenticate(self.admin)
+        row = self.client.post(f"/api/v1/admin/invitations/{self.invited.id}/reissue/").json()
+        self.assertNotEqual(row["invitation_token"], str(old))
+        self.assertEqual(self.accept(old, "Otpusk-2027!").status_code, 404)
+        self.assertEqual(self.accept(row["invitation_token"], "Otpusk-2027!").status_code, 200)

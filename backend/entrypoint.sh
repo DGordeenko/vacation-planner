@@ -1,6 +1,13 @@
 #!/bin/sh
 set -e
 
+# Команда вместо веб-сервера: `docker compose run backend python manage.py
+# send_mail_queue`, start command cron-сервиса Railway, CronJob Kubernetes.
+# Миграции и подготовка демо для разовой команды не нужны.
+if [ "$#" -gt 0 ]; then
+    exec "$@"
+fi
+
 # Миграции при старте удобны для Docker и Railway, где контейнер один.
 # В Kubernetes несколько реплик стартуют одновременно и конкурируют —
 # там миграции выносятся в Job или initContainer, а здесь отключаются
@@ -40,6 +47,20 @@ if is_true "${DEMO_MODE_ENABLED:-0}" && is_true "${DEMO_LOAD_ON_START:-1}"; then
         echo "ВНИМАНИЕ: демо-база не подготовлена, демо-режим недоступен." \
              "Рабочая система запускается. Причина — в сообщениях выше." >&2
     fi
+fi
+
+# Ежедневный сброс демо (по умолчанию в полночь, DEMO_RESET_TIME=ЧЧ:ММ):
+# фоновый процесс рядом с gunicorn. DEMO_RESET_DAILY=0 — выключить, например
+# при общей демо-базе на несколько реплик: там сброс — отдельный CronJob.
+if is_true "${DEMO_MODE_ENABLED:-0}" && is_true "${DEMO_RESET_DAILY:-1}"; then
+    python manage.py demo_reset_daily &
+fi
+
+# Почтовая очередь по расписанию (docs/12-mail-setup.md): фоновый процесс
+# рядом с gunicorn, когда почта включена. MAIL_SCHEDULER=0 — при нескольких
+# репликах, там отправку делают CronJob.
+if is_true "${MAIL_NOTIFICATIONS_ENABLED:-0}" && is_true "${MAIL_SCHEDULER:-1}"; then
+    python manage.py mail_scheduler &
 fi
 
 exec gunicorn config.wsgi:application \
