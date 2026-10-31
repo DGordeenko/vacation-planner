@@ -332,7 +332,7 @@ export default function App() {
           <div className="vs-small vs-muted">График отпусков на {YEAR} год</div>
         </div>
         <div className="vs-right">
-          <NotificationBell items={notifications} unread={unread} onChanged={() => void reload()}
+          <NotificationBell key={view} items={notifications} unread={unread} onChanged={() => void reload()}
             onOpen={(note) => {
               // Запросы на решение ведут туда, где решают; остальное — к своему графику.
               const actionable = ["approval_required", "exception_required"].includes(note.notification_type);

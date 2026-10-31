@@ -336,6 +336,7 @@ function RvdTrackingSection() {
       {error && <div className="vs-error vs-error-inline">{error}</div>}
 
       {(overridden.length > 0 || data.employees.length > 0) && (
+        <div className="vs-table-scroll">
         <table className="vs-table">
           <tbody>
             {overridden.map((u) => (
@@ -356,6 +357,7 @@ function RvdTrackingSection() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       <div className="vs-timeoff-form">
