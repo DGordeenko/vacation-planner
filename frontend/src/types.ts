@@ -167,6 +167,73 @@ export interface ImportReport {
   preview: { date: string; name: string; day_type: DayType }[];
 }
 
+export interface Invitation {
+  employee_id: string;
+  full_name: string;
+  employee_number: string;
+  email: string;
+  org_unit: string | null;
+  invitation_token: string;
+}
+
+export interface EmployeeImportReport {
+  applied: boolean;
+  dry_run: boolean;
+  total_rows: number;
+  created: number;
+  updated: number;
+  problems: ImportProblem[];
+  warnings: ImportProblem[];
+}
+
+export interface AuditChange {
+  field: string;
+  label: string;
+  was: unknown;
+  became: unknown;
+}
+
+export interface AuditRow {
+  id: string;
+  entity_type: string;
+  entity_type_display: string;
+  entity_id: string | null;
+  entity_label: string;
+  action: "create" | "update" | "delete";
+  action_display: string;
+  changed_by: string | null;
+  changed_by_name: string;
+  subject_employee: string | null;
+  subject_name: string | null;
+  changed_at: string;
+  diff: Record<string, unknown>;
+  changes: AuditChange[];
+  source: string;
+}
+
+export interface AuditEntityType {
+  code: string;
+  name: string;
+}
+
+export interface CompanySettingsRow {
+  annual_vacation_norm_days: number;
+  monthly_accrual_rate: number;
+  approval_levels: number;
+  workday_hours: number;
+  rvd_compensation_tracking_enabled: boolean;
+}
+
+export interface ValidationRuleRow {
+  code: string;
+  name: string;
+  description: string;
+  is_enabled: boolean;
+  /** Строка: DecimalField приходит из DRF строкой. null — у правила нет порога. */
+  threshold_value: string | null;
+  approver_level: string;
+}
+
 export interface CalendarImpact {
   year: number;
   affected_entries: number;

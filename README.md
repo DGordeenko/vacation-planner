@@ -152,7 +152,7 @@ npm run dev                       # http://localhost:5173
 ### Тесты
 
 ```bash
-cd backend && python manage.py test        # 387 тестов
+cd backend && python manage.py test        # 412 тестов
 cd frontend && npx tsc -b && npm run build
 ```
 

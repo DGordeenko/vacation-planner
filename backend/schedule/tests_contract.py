@@ -254,3 +254,98 @@ class ManagerScreensContractTests(TestCase):
             self.client.get(f"/api/v1/tags/{self.tag.id}/members/").json()[0]))
         self.assertEqual(EMPLOYEE_BRIEF_FIELDS, set(
             self.client.get("/api/v1/employees/search/?q=Сотр").json()[0]))
+
+
+# types.ts: EmployeeImportReport, ImportProblem
+EMPLOYEE_IMPORT_FIELDS = {"applied", "dry_run", "total_rows", "created", "updated",
+                          "problems", "warnings"}
+
+
+class EmployeeImportContractTests(TestCase):
+    def test_import_report_contract(self):
+        import base64
+        CompanySettings.get_solo()
+        admin = Employee.objects.create_user(
+            email="a@i.ru", employee_number="1", full_name="А", hire_date=date(2015, 1, 1))
+        admin.is_admin = True
+        admin.save()
+        client = APIClient()
+        client.force_authenticate(admin)
+        text = "employee_number;full_name;email;hire_date\n5;Б;;2015-01-01\n"
+        body = client.post("/api/v1/employees/import-csv/", {
+            "content": base64.b64encode(text.encode()).decode(), "dry_run": True},
+            format="json").json()
+        self.assertEqual(EMPLOYEE_IMPORT_FIELDS, set(body))
+        self.assertEqual({"row", "column", "value", "message"}, set(body["problems"][0]))
+
+
+# types.ts: Invitation
+INVITATION_FIELDS = {"employee_id", "full_name", "employee_number", "email", "org_unit",
+                     "invitation_token"}
+
+
+class InvitationContractTests(TestCase):
+    def test_invitation_contract(self):
+        import uuid
+        admin = Employee.objects.create_user(
+            email="a@i.ru", employee_number="1", full_name="А", hire_date=date(2015, 1, 1))
+        admin.is_admin = True
+        admin.save()
+        Employee.objects.create_user(
+            email="b@i.ru", employee_number="2", full_name="Б", hire_date=date(2015, 1, 1),
+            invitation_token=uuid.uuid4())
+        client = APIClient()
+        client.force_authenticate(admin)
+        rows = client.get("/api/v1/admin/invitations/").json()
+        self.assertEqual(INVITATION_FIELDS, set(rows[0]))
+
+
+# types.ts: AuditRow, AuditChange, AuditEntityType
+AUDIT_ROW_FIELDS = {"id", "entity_type", "entity_type_display", "entity_id", "entity_label",
+                    "action", "action_display", "changed_by", "changed_by_name",
+                    "subject_employee", "subject_name", "changed_at", "diff", "changes",
+                    "source"}
+
+
+class AuditContractTests(TestCase):
+    def test_audit_contract(self):
+        from audit.context import acting_as
+        from company.models import Holiday
+        admin = Employee.objects.create_user(
+            email="a@i.ru", employee_number="1", full_name="А", hire_date=date(2015, 1, 1))
+        admin.is_admin = True
+        admin.save()
+        with acting_as(admin, source="api"):
+            Holiday.objects.create(date=date(2027, 1, 7), name="Рождество")
+        client = APIClient()
+        client.force_authenticate(admin)
+        body = client.get("/api/v1/audit-log/?entity_type=Holiday").json()
+        self.assertEqual({"count", "next", "previous", "results"}, set(body))
+        self.assertEqual(AUDIT_ROW_FIELDS, set(body["results"][0]))
+        self.assertEqual({"field", "label", "was", "became"},
+                         set(body["results"][0]["changes"][0]))
+        self.assertEqual({"code", "name"},
+                         set(client.get("/api/v1/audit-log/entity-types/").json()[0]))
+
+
+# types.ts: CompanySettingsRow, ValidationRuleRow
+COMPANY_SETTINGS_FIELDS = {"annual_vacation_norm_days", "monthly_accrual_rate",
+                           "approval_levels", "workday_hours",
+                           "rvd_compensation_tracking_enabled"}
+VALIDATION_RULE_FIELDS = {"code", "name", "description", "is_enabled", "threshold_value",
+                          "approver_level"}
+
+
+class SettingsContractTests(TestCase):
+    def test_settings_and_rules_contract(self):
+        from schedule.tests import seed_rules
+        CompanySettings.get_solo()
+        seed_rules()
+        user = Employee.objects.create_user(
+            email="a@i.ru", employee_number="1", full_name="А", hire_date=date(2015, 1, 1))
+        client = APIClient()
+        client.force_authenticate(user)
+        self.assertEqual(COMPANY_SETTINGS_FIELDS, set(client.get("/api/v1/settings/").json()))
+        rules = client.get("/api/v1/validation-rules/").json()
+        rows = rules["results"] if isinstance(rules, dict) else rules
+        self.assertEqual(VALIDATION_RULE_FIELDS, set(rows[0]))

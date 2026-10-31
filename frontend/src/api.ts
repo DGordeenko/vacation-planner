@@ -6,8 +6,8 @@
 */
 
 import type {
-  AnnualSummary, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
-  DemoRoleCode, EmployeeBrief, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
+  AnnualSummary, AuditEntityType, AuditRow, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
+  DemoRoleCode, EmployeeBrief, EmployeeImportReport, Invitation, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
   TeamEntryDetail, TeamScope,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
   ValidationResult, YearSummary,
@@ -223,6 +223,50 @@ export const tagsApi = {
 };
 
 /** Администрирование календаря праздников. */
+/** Загрузка кадровой выгрузки. Файл уходит байтами (base64): сервер сам
+    определяет кодировку, UTF-8 или CP1251, как у выгрузок из 1С. */
+export const employeesAdminApi = {
+  invitations: () => request<Invitation[]>("/admin/invitations/"),
+  reissueInvitation: (employeeId: string) =>
+    request<Invitation>(`/admin/invitations/${employeeId}/reissue/`, { method: "POST" }),
+  importCsv: (contentBase64: string, dryRun: boolean) =>
+    request<EmployeeImportReport>("/employees/import-csv/", {
+      method: "POST",
+      body: JSON.stringify({ content: contentBase64, dry_run: dryRun }),
+    }),
+};
+
+export interface AuditFilter {
+  entity_type?: string;
+  action?: string;
+  employee_id?: string;
+  since?: string;
+  until?: string;
+}
+
+/** Журнал изменений: что видно, решает сервер; клиент только фильтрует запрос. */
+export const auditApi = {
+  list: (filter: AuditFilter, page: number) => {
+    const params = new URLSearchParams({ page: String(page) });
+    Object.entries(filter).forEach(([k, v]) => { if (v) params.set(k, v); });
+    return request<Paginated<AuditRow>>(`/audit-log/?${params}`);
+  },
+  entityTypes: () => request<AuditEntityType[]>("/audit-log/entity-types/"),
+};
+
+/** Настройки компании, пороги правил и оформление (релиз 1.2). */
+export const settingsApi = {
+  get: () => request<CompanySettingsRow>("/settings/"),
+  save: (patch: Partial<CompanySettingsRow>) =>
+    request<CompanySettingsRow>("/settings/", { method: "PATCH", body: JSON.stringify(patch) }),
+  rules: () => request<Paginated<ValidationRuleRow>>("/validation-rules/?page_size=100"),
+  saveRule: (code: string, patch: Partial<ValidationRuleRow>) =>
+    request<ValidationRuleRow>(`/validation-rules/${code}/`,
+      { method: "PATCH", body: JSON.stringify(patch) }),
+  saveBranding: (patch: Partial<Branding>) =>
+    request<Branding>("/settings/branding/", { method: "PATCH", body: JSON.stringify(patch) }),
+};
+
 export const adminApi = {
   years: () => request<YearSummary[]>("/admin/holidays/years/"),
 
