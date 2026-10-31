@@ -232,3 +232,58 @@ class ImportDryRunTests(TestCase):
         self.assertTrue(report.applied)
         self.assertTrue(any("Остаток отпуска не указан" in w.message
                             for w in report.warnings))
+
+
+class ImportApiTests(TestCase):
+    """Экран загрузки: предпросмотр с итогами, затем применение (UX 2.5)."""
+
+    def setUp(self):
+        import base64
+        from rest_framework.test import APIClient
+        CompanySettings.get_solo()
+        self.client = APIClient()
+        self.admin = Employee.objects.create_user(
+            email="adm@corp.ru", employee_number="0001", full_name="Админ",
+            hire_date=date(2015, 1, 1))
+        self.admin.is_admin = True
+        self.admin.save()
+        self.encode = lambda text: base64.b64encode(text.encode("utf-8")).decode()
+
+    def post(self, text, dry_run):
+        self.client.force_authenticate(self.admin)
+        return self.client.post("/api/v1/employees/import-csv/",
+                                {"content": self.encode(text), "dry_run": dry_run},
+                                format="json")
+
+    def test_preview_counts_without_writing(self):
+        response = self.post(CLEAN, dry_run=True)
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual((body["created"], body["updated"], body["applied"]), (3, 0, False))
+        self.assertFalse(Employee.objects.filter(employee_number="1001").exists())
+
+    def test_apply_writes(self):
+        body = self.post(CLEAN, dry_run=False).json()
+        self.assertTrue(body["applied"])
+        self.assertEqual(Employee.objects.filter(employee_number__in=["1001", "1002", "1003"])
+                         .count(), 3)
+        self.assertEqual(self.post(CLEAN, dry_run=True).json()["updated"], 3)
+
+    def test_problems_return_conflict(self):
+        response = self.post(CLEAN.replace("eng1@corp.ru", "без-собаки"), dry_run=True)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["problems"][0]["row"], 4)
+
+    def test_only_admin(self):
+        self.client.force_authenticate(Employee.objects.create_user(
+            email="u@corp.ru", employee_number="0002", full_name="Пользователь",
+            hire_date=date(2015, 1, 1)))
+        response = self.client.post("/api/v1/employees/import-csv/",
+                                    {"content": self.encode(CLEAN)}, format="json")
+        self.assertEqual(response.status_code, 403)
+
+    def test_garbage_is_rejected(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post("/api/v1/employees/import-csv/",
+                                    {"content": "не base64!"}, format="json")
+        self.assertEqual(response.status_code, 400)
