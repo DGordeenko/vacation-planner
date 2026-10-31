@@ -6,7 +6,8 @@
 */
 
 import type {
-  AnnualSummary, AuditEntityType, AuditRow, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
+  Absence, AbsenceReason, AbsenceSummary, AnnualSummary, AuditEntityType, AuditRow, CheckResult,
+  TimeOffBalance, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
   DemoRoleCode, EmployeeBrief, EmployeeImportReport, Invitation, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
   TeamEntryDetail, TeamScope,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
@@ -190,6 +191,12 @@ export const managerApi = {
     request<TeamCalendar>(`/team-calendar/?date_from=${date_from}&date_to=${date_to}`
       + (tagId ? `&tag_id=${tagId}` : "") + (scope === "all" ? "&scope=all" : "")),
   teamEntry: (id: string) => request<TeamEntryDetail>(`/team-calendar/entries/${id}/`),
+  approveDayOff: (id: string) =>
+    request<ScheduleEntry>(`/day-offs/${id}/approve/`, { method: "POST" }),
+  rejectDayOff: (id: string, comment: string) =>
+    request<ScheduleEntry>(`/day-offs/${id}/reject/`, {
+      method: "POST", body: JSON.stringify({ comment }),
+    }),
 };
 
 /** Справочник тегов и ручное назначение. */
@@ -266,6 +273,38 @@ export const settingsApi = {
   saveBranding: (patch: Partial<Branding>) =>
     request<Branding>("/settings/branding/", { method: "PATCH", body: JSON.stringify(patch) }),
 };
+
+/** Учёт времени сотрудника: часы отгулов, отгулы, внеплановые отсутствия.
+    Проверки — серверные (validate), те же, что при сохранении. */
+export const timeOffApi = {
+  balance: (employeeId: string) =>
+    request<TimeOffBalance>(`/employees/${employeeId}/time-off-balance/`),
+  dayOffs: (employeeId: string) =>
+    request<Paginated<ScheduleEntry>>(`/day-offs/?employee_id=${employeeId}&page_size=200`),
+  checkDayOff: (date: string) =>
+    request<CheckResult>("/day-offs/validate/", { method: "POST", body: JSON.stringify({ date }) }),
+  requestDayOff: (date: string) =>
+    request<ScheduleEntry>("/day-offs/", { method: "POST", body: JSON.stringify({ date_from: date }) }),
+  cancelDayOff: (id: string) => request<void>(`/day-offs/${id}/`, { method: "DELETE" }),
+  reasons: () => request<Paginated<AbsenceReason>>("/absence-reasons/?page_size=100"),
+  absences: (employeeId: string, year: number) =>
+    request<Paginated<Absence>>(`/absences/?employee_id=${employeeId}&year=${year}&page_size=200`),
+  absenceSummary: (employeeId: string, year: number) =>
+    request<AbsenceSummary>(`/employees/${employeeId}/absence-summary/?year=${year}`),
+  checkAbsence: (data: AbsenceInput) =>
+    request<CheckResult & { days: number }>("/absences/validate/",
+      { method: "POST", body: JSON.stringify(data) }),
+  recordAbsence: (data: AbsenceInput) =>
+    request<Absence>("/absences/", { method: "POST", body: JSON.stringify(data) }),
+  deleteAbsence: (id: string) => request<void>(`/absences/${id}/`, { method: "DELETE" }),
+};
+
+export interface AbsenceInput {
+  date_from: string;
+  date_to: string | null;
+  reason: string | null;
+  custom_reason_text: string;
+}
 
 export const adminApi = {
   years: () => request<YearSummary[]>("/admin/holidays/years/"),

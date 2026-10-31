@@ -618,3 +618,20 @@ body {
 .vs-colour input:not([type=color]) { width: 100px; }
 .vs-colour-sample { color: #fff; padding: 7px 12px; border-radius: 8px; font-size: 13px; }
 @media (max-width: 640px) { .vs-rule { grid-template-columns: 1fr; } .vs-rule-threshold { justify-content: flex-start; } }
+
+/* Отгулы и отсутствия */
+.vs-timeoff { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); align-items: start; }
+.vs-timeoff-card { display: grid; gap: 12px; }
+.vs-timeoff-balance { display: grid; gap: 2px; }
+.vs-big { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+.vs-timeoff-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.vs-timeoff-form .vs-field { min-width: 150px; }
+.vs-absence-form .vs-absence-other { flex: 1 1 220px; }
+.vs-timeoff-list { margin: 0; }
+.vs-timeoff-list .vs-item { align-items: center; gap: 10px; }
+.vs-status { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: var(--surface); margin-left: auto; }
+.vs-status.ok { color: var(--brand); }
+.vs-status.bad { color: var(--alert); background: #fdf3f3; }
+.vs-plus { color: var(--brand); white-space: nowrap; }
+.vs-minus { color: var(--alert); white-space: nowrap; }
+@media (max-width: 480px) { .vs-timeoff { grid-template-columns: 1fr; } }

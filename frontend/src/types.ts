@@ -346,10 +346,66 @@ export interface ExceptionDecision extends TeamEntry {
   violations: Violation[];
 }
 
+export interface TimeOffSummary {
+  hours: number;
+  workday_hours: number;
+  available_days: number;
+  remainder_hours: number;
+}
+
+export interface TimeOffBalance extends TimeOffSummary {
+  /** Отгулы на согласовании: часы ещё не списаны, но заняты. */
+  pending_days: number;
+  /** Сколько отгулов можно попросить сейчас. */
+  free_days: number;
+  history: { date: string; hours: number; reason: string; comment: string }[];
+}
+
+export interface DayOffDecision extends TeamEntry {
+  employee_id: string;
+  employee_name: string;
+  balance: TimeOffSummary;
+}
+
 export interface Decisions {
   count: number;
   approvals: ApprovalDecision[];
   exceptions: ExceptionDecision[];
+  day_offs: DayOffDecision[];
+}
+
+export interface AbsenceReason {
+  id: string;
+  code: string;
+  name: string;
+  is_other: boolean;
+}
+
+export interface Absence {
+  id: string;
+  employee: string;
+  employee_name: string;
+  date_from: string;
+  date_to: string | null;
+  reason: string | null;
+  reason_name: string | null;
+  custom_reason_text: string;
+  days: number;
+  recorded_by: string;
+  recorded_by_id: string | null;
+  created_at: string;
+}
+
+export interface AbsenceSummary {
+  year: number;
+  total_days: number;
+  episodes: number;
+  by_reason: { reason: string; days: number; count: number }[];
+}
+
+export interface CheckResult {
+  is_valid: boolean;
+  violations: Violation[];
 }
 
 export interface TeamCalendarEntry extends TeamEntry {

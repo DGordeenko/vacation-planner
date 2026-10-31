@@ -11,6 +11,7 @@ import TeamCalendar from "./components/TeamCalendar";
 import EmployeeImport from "./components/EmployeeImport";
 import AuditLog from "./components/AuditLog";
 import Settings from "./components/Settings";
+import TimeOff from "./components/TimeOff";
 import TagsAdmin from "./components/TagsAdmin";
 import type {
   AnnualSummary, Branding, Holiday, Me, Notification,
@@ -52,7 +53,7 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<
-    "schedule" | "holidays" | "decisions" | "team" | "tags" | "employees" | "audit" | "settings">("schedule");
+    "schedule" | "holidays" | "decisions" | "team" | "tags" | "employees" | "audit" | "settings" | "timeoff">("schedule");
   const [decisionsCount, setDecisionsCount] = useState(0);
 
   const reload = useCallback(async () => {
@@ -291,6 +292,8 @@ export default function App() {
           <nav className="vs-nav" aria-label="Разделы">
             <button className="vs-nav-item" aria-current={view === "schedule"}
               onClick={() => setView("schedule")}>Мой график</button>
+            <button className="vs-nav-item" aria-current={view === "timeoff"}
+              onClick={() => setView("timeoff")}>Отгулы</button>
             {(me.is_manager || me.is_admin) && (
               <>
                 <button className="vs-nav-item" aria-current={view === "decisions"}
@@ -331,6 +334,9 @@ export default function App() {
 
       {view === "holidays" ? (
         <HolidayAdmin onBack={() => { setView("schedule"); void reload(); }} />
+      ) : view === "timeoff" ? (
+        <TimeOff me={me} onBack={() => { setView("schedule"); void reload(); }}
+          onChanged={() => void reload()} />
       ) : view === "settings" ? (
         <Settings branding={branding} onBack={() => { setView("schedule"); void reload(); }}
           onBrandingChanged={() => void reload()} />

@@ -220,3 +220,13 @@ class HolidayAdminApiTests(TestCase):
         response = self.client.delete("/api/v1/admin/holidays/clear-year/?year=2027")
         self.assertEqual(response.json()["deleted"], 1)
         self.assertEqual(Holiday.objects.count(), 0)
+
+
+class AbsenceReasonsReferenceTests(TestCase):
+    """Справочник причин создаётся миграцией, без демо-данных."""
+
+    def test_reasons_exist_in_clean_database(self):
+        from company.models import AbsenceReason
+        codes = set(AbsenceReason.objects.values_list("code", flat=True))
+        self.assertTrue({"sick_leave", "other"} <= codes)
+        self.assertTrue(AbsenceReason.objects.get(code="other").is_other)

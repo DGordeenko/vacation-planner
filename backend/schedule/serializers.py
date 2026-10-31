@@ -191,12 +191,15 @@ class AbsenceSerializer(serializers.ModelSerializer):
     reason_name = serializers.CharField(source="reason.name", read_only=True)
     days = serializers.SerializerMethodField()
     recorded_by = serializers.CharField(source="created_by.full_name", read_only=True)
+    # Удалить запись может её автор: интерфейсу нужен идентификатор, а не имя —
+    # у однофамильцев имена совпадают.
+    recorded_by_id = serializers.UUIDField(source="created_by_id", read_only=True)
 
     class Meta:
         model = ScheduleEntry
         fields = ["id", "employee", "employee_name", "date_from", "date_to",
                   "reason", "reason_name", "custom_reason_text", "days",
-                  "recorded_by", "created_at"]
+                  "recorded_by", "recorded_by_id", "created_at"]
 
     def get_days(self, obj):
         from schedule.calculations import absence_days

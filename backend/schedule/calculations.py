@@ -727,7 +727,9 @@ def validate_day_off(employee: Employee, on_date: date,
         date_from__lte=on_date,
         record_type__in=[ScheduleEntry.RecordType.VACATION,
                          ScheduleEntry.RecordType.DAY_OFF],
-    ).exclude(status=ScheduleEntry.Status.CANCELLED)
+    # Отклонённое руководителем не занимает день: иначе после отказа
+    # отгул на ту же дату нельзя было бы попросить снова.
+    ).exclude(status__in=[ScheduleEntry.Status.CANCELLED, ScheduleEntry.Status.REJECTED])
     if exclude_entry_id:
         busy = busy.exclude(id=exclude_entry_id)
     for other in busy:

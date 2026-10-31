@@ -566,6 +566,13 @@ class TimeOffBalanceView(APIView):
         employee = get_object_or_404(Employee, id=employee_id)
 
         summary = calculations.time_off_summary(employee)
+        # Отгулы на согласовании часы ещё не списали, но новый отгул под них
+        # уже не дадут (validate_day_off): показываем, сколько можно попросить.
+        pending = ScheduleEntry.objects.filter(
+            employee=employee, record_type=ScheduleEntry.RecordType.DAY_OFF,
+            status=ScheduleEntry.Status.PENDING_APPROVAL).count()
+        summary["pending_days"] = pending
+        summary["free_days"] = max(summary["available_days"] - pending, 0)
         summary["history"] = [
             {
                 "date": row.entry_date,
@@ -584,10 +591,14 @@ class DayOffViewSet(viewsets.ModelViewSet):
     serializer_class = ScheduleEntrySerializer
 
     def get_queryset(self):
-        return ScheduleEntry.objects.filter(
+        queryset = ScheduleEntry.objects.filter(
             record_type=ScheduleEntry.RecordType.DAY_OFF,
             employee_id__in=self.request.user.visible_employee_ids(),
         ).select_related("employee")
+        employee_id = self.request.query_params.get("employee_id")
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+        return queryset.order_by("-date_from")
 
     @action(detail=False, methods=["post"])
     def validate(self, request):
