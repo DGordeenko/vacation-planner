@@ -185,3 +185,6 @@ class EmployeeTag(models.Model):
         unique_together = ("employee", "tag")
         verbose_name = "Тег сотрудника"
         verbose_name_plural = "Теги сотрудников"
+
+    def __str__(self):
+        return f"{self.employee} — {self.tag}"

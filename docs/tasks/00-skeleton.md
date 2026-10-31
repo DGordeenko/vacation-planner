@@ -72,12 +72,14 @@
 
 Отдельной итерацией, потому что требует правок в коде и может дать шум.
 
-- Подключить `ruff` для бэкенда и ESLint для фронтенда, исправить замечания.
-- Решить вопрос с pytest: сейчас тесты на штатном раннере Django.
-  Либо перевести на `pytest` + `pytest-django`, либо оставить
-  `python manage.py test` — **выбор согласовать до начала работы.**
-- `.github/workflows/ci.yml` на push и pull request: тесты, линтеры,
-  сборка фронтенда.
+- ~~Подключить `ruff` для бэкенда и ESLint для фронтенда, исправить замечания.~~
+  Сделано: ruff (E, W, F, I, B, DJ; строка до 100), ESLint (recommended,
+  typescript-eslint, правила хуков React).
+- ~~Решить вопрос с pytest~~ — оставлен `python manage.py test`: переход
+  не даёт новых возможностей, а 430 тестов написаны под штатный раннер.
+- ~~`.github/workflows/ci.yml` на push и pull request: тесты, линтеры,
+  сборка фронтенда.~~ Сделано без линтеров: тесты на PostgreSQL, проверка
+  миграций, сборка фронтенда и образов, запуск через compose, линтеры.
 - Обновить раздел «Тесты» в `CLAUDE.md` под фактические команды.
 
 ### Готовность итерации 2
@@ -88,7 +90,7 @@ CI зелёный на обоих событиях, команды в `CLAUDE.md
 
 ## Итерация 3. Kubernetes и Railway
 
-- **Kubernetes:** манифесты или Helm-чарт — Deployment на сервис, Service,
+- ~~**Kubernetes:**~~ сделано — `deploy/k8s/`, `docs/18-deploy-kubernetes.md`. Манифесты или Helm-чарт — Deployment на сервис, Service,
   Ingress, Secret и ConfigMap, пробы liveness и readiness на `/api/health/`.
   **Миграции вынести из entrypoint** в Job или initContainer: при нескольких
   репликах одновременный старт миграций приводит к конкуренции.

@@ -6,8 +6,9 @@
 */
 
 import type {
-  AnnualSummary, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
-  DemoRoleCode, EmployeeBrief, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
+  Absence, AbsenceReason, AbsenceSummary, AnnualSummary, AuditEntityType, AuditRow, CheckResult,
+  RvdCompensation, RvdRow, RvdTrackingOverrides, TimeOffBalance, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
+  DemoRoleCode, EmployeeBrief, EmployeeImportReport, Invitation, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
   TeamEntryDetail, TeamScope,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
   ValidationResult, YearSummary,
@@ -158,6 +159,8 @@ export const api = {
 
   markRead: (id: string) =>
     request<void>(`/notifications/${id}/mark-read/`, { method: "POST" }),
+  markAllRead: () => request<{ updated: number }>("/notifications/mark-all-read/", { method: "POST" }),
+  unreadCount: () => request<{ count: number }>("/notifications/unread-count/"),
 };
 
 /** Экраны руководителя: решения и календарь команды. */
@@ -190,6 +193,12 @@ export const managerApi = {
     request<TeamCalendar>(`/team-calendar/?date_from=${date_from}&date_to=${date_to}`
       + (tagId ? `&tag_id=${tagId}` : "") + (scope === "all" ? "&scope=all" : "")),
   teamEntry: (id: string) => request<TeamEntryDetail>(`/team-calendar/entries/${id}/`),
+  approveDayOff: (id: string) =>
+    request<ScheduleEntry>(`/day-offs/${id}/approve/`, { method: "POST" }),
+  rejectDayOff: (id: string, comment: string) =>
+    request<ScheduleEntry>(`/day-offs/${id}/reject/`, {
+      method: "POST", body: JSON.stringify({ comment }),
+    }),
 };
 
 /** Справочник тегов и ручное назначение. */
@@ -223,6 +232,105 @@ export const tagsApi = {
 };
 
 /** Администрирование календаря праздников. */
+/** Загрузка кадровой выгрузки. Файл уходит байтами (base64): сервер сам
+    определяет кодировку, UTF-8 или CP1251, как у выгрузок из 1С. */
+export const employeesAdminApi = {
+  invitations: () => request<Invitation[]>("/admin/invitations/"),
+  reissueInvitation: (employeeId: string) =>
+    request<Invitation>(`/admin/invitations/${employeeId}/reissue/`, { method: "POST" }),
+  importCsv: (contentBase64: string, dryRun: boolean) =>
+    request<EmployeeImportReport>("/employees/import-csv/", {
+      method: "POST",
+      body: JSON.stringify({ content: contentBase64, dry_run: dryRun }),
+    }),
+};
+
+export interface AuditFilter {
+  entity_type?: string;
+  action?: string;
+  employee_id?: string;
+  since?: string;
+  until?: string;
+}
+
+/** Журнал изменений: что видно, решает сервер; клиент только фильтрует запрос. */
+export const auditApi = {
+  list: (filter: AuditFilter, page: number) => {
+    const params = new URLSearchParams({ page: String(page) });
+    Object.entries(filter).forEach(([k, v]) => { if (v) params.set(k, v); });
+    return request<Paginated<AuditRow>>(`/audit-log/?${params}`);
+  },
+  entityTypes: () => request<AuditEntityType[]>("/audit-log/entity-types/"),
+};
+
+/** Настройки компании, пороги правил и оформление (релиз 1.2). */
+export const settingsApi = {
+  get: () => request<CompanySettingsRow>("/settings/"),
+  save: (patch: Partial<CompanySettingsRow>) =>
+    request<CompanySettingsRow>("/settings/", { method: "PATCH", body: JSON.stringify(patch) }),
+  rules: () => request<Paginated<ValidationRuleRow>>("/validation-rules/?page_size=100"),
+  saveRule: (code: string, patch: Partial<ValidationRuleRow>) =>
+    request<ValidationRuleRow>(`/validation-rules/${code}/`,
+      { method: "PATCH", body: JSON.stringify(patch) }),
+  rvdTracking: () => request<RvdTrackingOverrides>("/settings/rvd-tracking/"),
+  setRvdTracking: (kind: "unit" | "employee", id: string, value: boolean | null) =>
+    request<RvdTrackingOverrides>("/settings/rvd-tracking/",
+      { method: "POST", body: JSON.stringify({ kind, id, value }) }),
+  saveBranding: (patch: Partial<Branding>) =>
+    request<Branding>("/settings/branding/", { method: "PATCH", body: JSON.stringify(patch) }),
+};
+
+/** Учёт времени сотрудника: часы отгулов, отгулы, внеплановые отсутствия.
+    Проверки — серверные (validate), те же, что при сохранении. */
+export const timeOffApi = {
+  balance: (employeeId: string) =>
+    request<TimeOffBalance>(`/employees/${employeeId}/time-off-balance/`),
+  dayOffs: (employeeId: string) =>
+    request<Paginated<ScheduleEntry>>(`/day-offs/?employee_id=${employeeId}&page_size=200`),
+  checkDayOff: (date: string) =>
+    request<CheckResult>("/day-offs/validate/", { method: "POST", body: JSON.stringify({ date }) }),
+  requestDayOff: (date: string) =>
+    request<ScheduleEntry>("/day-offs/", { method: "POST", body: JSON.stringify({ date_from: date }) }),
+  cancelDayOff: (id: string) => request<void>(`/day-offs/${id}/`, { method: "DELETE" }),
+  reasons: () => request<Paginated<AbsenceReason>>("/absence-reasons/?page_size=100"),
+  absences: (employeeId: string, year: number) =>
+    request<Paginated<Absence>>(`/absences/?employee_id=${employeeId}&year=${year}&page_size=200`),
+  absenceSummary: (employeeId: string, year: number) =>
+    request<AbsenceSummary>(`/employees/${employeeId}/absence-summary/?year=${year}`),
+  checkAbsence: (data: AbsenceInput) =>
+    request<CheckResult & { days: number }>("/absences/validate/",
+      { method: "POST", body: JSON.stringify(data) }),
+  recordAbsence: (data: AbsenceInput) =>
+    request<Absence>("/absences/", { method: "POST", body: JSON.stringify(data) }),
+  deleteAbsence: (id: string) => request<void>(`/absences/${id}/`, { method: "DELETE" }),
+};
+
+export interface RvdInput {
+  employee: string;
+  date_from: string;
+  work_hours: string;
+  rvd_compensation_type: RvdCompensation | "";
+  task_link: string;
+}
+
+/** Работа в выходные дни: вносит администратор за прошедший месяц. */
+export const rvdApi = {
+  month: (year: number, month: number) =>
+    request<Paginated<RvdRow>>(`/admin/rvd/?year=${year}&month=${month}&page_size=500`),
+  create: (data: RvdInput) =>
+    request<RvdRow>("/admin/rvd/", { method: "POST", body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/admin/rvd/${id}/`, { method: "DELETE" }),
+  tracking: (employeeId: string) =>
+    request<{ tracked: boolean; source: string }>(`/admin/rvd/tracking/?employee_id=${employeeId}`),
+};
+
+export interface AbsenceInput {
+  date_from: string;
+  date_to: string | null;
+  reason: string | null;
+  custom_reason_text: string;
+}
+
 export const adminApi = {
   years: () => request<YearSummary[]>("/admin/holidays/years/"),
 

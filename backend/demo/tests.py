@@ -276,7 +276,7 @@ class EntrypointTests(SimpleTestCase):
     заглушки, которые только записывают, с чем их вызвали. Заглушка python
     завершается ошибкой, если в аргументах есть FAIL_ON."""
 
-    def run_entrypoint(self, fail_on="", **env):
+    def run_entrypoint(self, fail_on="", args=(), **env):
         script = Path(__file__).resolve().parent.parent / "entrypoint.sh"
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp) / "calls.log"
@@ -288,7 +288,7 @@ class EntrypointTests(SimpleTestCase):
                     f'case "$*" in *"{fail_on or "<never>"}"*) exit 1 ;; esac\n')
                 stub.chmod(0o755)
             result = subprocess.run(
-                ["sh", str(script)], capture_output=True, text=True,
+                ["sh", str(script), *args], capture_output=True, text=True,
                 env={"PATH": f"{tmp}:/usr/bin:/bin", **env})
             self.stderr = result.stderr
             self.returncode = result.returncode
@@ -310,8 +310,18 @@ class EntrypointTests(SimpleTestCase):
         self.assertTrue(self.gunicorn_started(calls))
 
     def test_demo_load_can_be_moved_to_job(self):
-        calls = self.run_entrypoint(DEMO_MODE_ENABLED="1", DEMO_LOAD_ON_START="0")
+        calls = self.run_entrypoint(DEMO_MODE_ENABLED="1", DEMO_LOAD_ON_START="0",
+                                    DEMO_RESET_DAILY="0")
         self.assertFalse(any("demo" in call for call in calls))
+
+    def test_daily_reset_started_with_demo(self):
+        """Ежедневный сброс — фоновый процесс рядом с gunicorn, только при демо."""
+        calls = self.run_entrypoint(DEMO_MODE_ENABLED="True")
+        self.assertIn("python manage.py demo_reset_daily", calls)
+        self.assertTrue(self.gunicorn_started(calls))
+        self.assertNotIn("python manage.py demo_reset_daily", self.run_entrypoint())
+        self.assertNotIn("python manage.py demo_reset_daily",
+                         self.run_entrypoint(DEMO_MODE_ENABLED="True", DEMO_RESET_DAILY="0"))
 
     def test_failed_demo_migration_does_not_stop_start(self):
         """Ровно сбой с Railway: миграция демо-базы падает, сервис стартует."""
@@ -367,3 +377,58 @@ class StartupResilienceTests(SimpleTestCase):
                 result = subprocess.run([sys.executable, "manage.py", *command],
                                         cwd=backend, env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, f"{command}: {result.stderr[-500:]}")
+
+
+class DailyResetScheduleTests(SimpleTestCase):
+    """Ежедневный сброс демо: когда следующий запуск."""
+
+    def setUp(self):
+        from zoneinfo import ZoneInfo
+        self.tz = ZoneInfo("Europe/Moscow")
+
+    def test_next_midnight_local_time(self):
+        from datetime import datetime, time, timezone
+
+        from demo.schedule import next_run
+        # 22:30 UTC 31.10 = 01:30 МСК 01.11 → следующая полночь 02.11 по Москве
+        now = datetime(2026, 10, 31, 22, 30, tzinfo=timezone.utc)
+        moment = next_run(now, time(0, 0), self.tz)
+        self.assertEqual((moment.day, moment.hour, moment.minute), (2, 0, 0))
+        # 20:00 UTC 31.10 = 23:00 МСК → полночь через час
+        moment = next_run(datetime(2026, 10, 31, 20, 0, tzinfo=timezone.utc), time(0, 0), self.tz)
+        self.assertEqual((moment.month, moment.day), (11, 1))
+
+    def test_exact_moment_moves_to_next_day(self):
+        from datetime import datetime, time
+
+        from demo.schedule import next_run
+        now = datetime(2026, 11, 1, 0, 0, tzinfo=self.tz)
+        self.assertEqual(next_run(now, time(0, 0), self.tz).day, 2)
+
+    def test_reset_time_parsing(self):
+        from datetime import time
+
+        from demo.schedule import parse_reset_time
+        self.assertEqual(parse_reset_time("03:30"), time(3, 30))
+        with self.assertRaises(ValueError):
+            parse_reset_time("полночь")
+
+
+class EntrypointCommandsTests(SimpleTestCase):
+    """Команда вместо веб-сервера (cron-сервис Railway, CronJob) и почта."""
+
+    # Те же заглушки, что в EntrypointTests, без повторного запуска его тестов.
+    run_entrypoint = EntrypointTests.run_entrypoint
+    gunicorn_started = EntrypointTests.gunicorn_started
+
+    def test_command_runs_without_migrations_or_gunicorn(self):
+        calls = self.run_entrypoint(args=("python", "manage.py", "send_mail_queue"))
+        self.assertEqual(calls, ["python manage.py send_mail_queue"])
+
+    def test_mail_scheduler_only_when_mail_enabled(self):
+        self.assertNotIn("python manage.py mail_scheduler", self.run_entrypoint())
+        calls = self.run_entrypoint(MAIL_NOTIFICATIONS_ENABLED="True")
+        self.assertIn("python manage.py mail_scheduler", calls)
+        self.assertTrue(self.gunicorn_started(calls))
+        self.assertNotIn("python manage.py mail_scheduler", self.run_entrypoint(
+            MAIL_NOTIFICATIONS_ENABLED="True", MAIL_SCHEDULER="0"))

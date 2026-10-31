@@ -1,0 +1,109 @@
+# Проверки на каждый push и pull request: тесты бэкенда на PostgreSQL,
+# проверка типов и сборка фронтенда, сборка обоих Docker-образов.
+# Линтеры: ruff для бэкенда, ESLint для фронтенда (tasks/00-skeleton.md,
+# итерация 2). Тесты — штатным раннером Django, без pytest.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Бэкенд — линтер и тесты
+    runs-on: ubuntu-latest
+    services:
+      # Тесты идут на той же СУБД, что и в работе: SQLite прощает то,
+      # на чём PostgreSQL падает (типы, блокировки, ограничения).
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: vacation
+          POSTGRES_USER: vacation
+          POSTGRES_PASSWORD: vacation
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U vacation"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://vacation:vacation@localhost:5432/vacation
+      SECRET_KEY: ci-only-not-secret
+      DEBUG: "False"
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"   # как в backend/Dockerfile
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Линтер (ruff)
+        run: ruff check --output-format=github .
+      - name: Нет несозданных миграций
+        run: python manage.py makemigrations --check --dry-run
+      - name: Тесты
+        run: python manage.py test --noinput
+
+  frontend:
+    name: Фронтенд — линтер, типы и сборка
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"   # как в frontend/Dockerfile
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Линтер (ESLint)
+        run: npm run lint
+      - run: npx tsc -b
+      - run: npm run build
+
+  images:
+    name: Docker-образы
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Сборка образа бэкенда сама прогоняет manage.py check и collectstatic:
+      # ошибка импорта ломает CI, а не запуск на площадке.
+      - name: Образ бэкенда
+        run: docker build -t vacation-backend:ci backend
+      - name: Образ фронтенда
+        run: docker build -t vacation-frontend:ci frontend
+      # Тот же путь, что у пользователей: compose поднимает базу, бэкенд
+      # с миграциями и фронтенд с прокси; проверяем API через nginx.
+      - name: Запуск через docker compose
+        run: |
+          docker compose up -d --wait postgres backend frontend
+          curl -fsS http://localhost:8080/api/health/
+          curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
+      - name: Журналы при сбое
+        if: failure()
+        run: docker compose logs --no-color
+
+  kubernetes:
+    name: Kubernetes — манифесты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Сборка kustomize и проверка по схемам Kubernetes
+        run: |
+          curl -sSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz | tar xz
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
+          ./kustomize build deploy/k8s > rendered.yaml
+          ./kubeconform -strict -summary -kubernetes-version 1.29.0 rendered.yaml deploy/k8s/secret.example.yaml

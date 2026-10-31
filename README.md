@@ -149,12 +149,15 @@ npm run dev                       # http://localhost:5173
 
 Запросы к `/api` проксируются на бэкенд настройкой в `vite.config.ts`.
 
-### Тесты
+### Тесты и линтеры
 
 ```bash
-cd backend && python manage.py test        # 387 тестов
-cd frontend && npx tsc -b && npm run build
+cd backend && pip install -r requirements-dev.txt
+cd backend && ruff check . && python manage.py test        # 437 тестов
+cd frontend && npm run lint && npx tsc -b && npm run build
 ```
+
+То же выполняет CI на каждый PR.
 
 ---
 
@@ -185,9 +188,9 @@ cd frontend && npx tsc -b && npm run build
 
 Образы переносимые: порт и настройки берутся только из переменных окружения.
 
-**Kubernetes.** Миграции вынести из entrypoint (`RUN_MIGRATIONS=0`) в Job
-или initContainer — при нескольких репликах одновременный старт приводит
-к конкуренции. Пробы liveness и readiness вешаются на `/api/health/`.
+**Kubernetes.** Манифесты — `deploy/k8s/` (`kubectl apply -k deploy/k8s`):
+миграции отдельным Job, почта — CronJob, пробы на `/api/health/`. Пошагово —
+`docs/18-deploy-kubernetes.md`.
 
 **Railway.** По сервису на папку плюс PostgreSQL. Фронтенд проксирует API
 на бэкенд по внутренней сети Railway, поэтому домен один и CORS не нужен.
