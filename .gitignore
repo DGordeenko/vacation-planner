@@ -27,3 +27,6 @@ dist/
 
 # Служебные файлы сборки TypeScript
 *.tsbuildinfo
+
+# Резервные копии базы (docker compose, сервис backup)
+backups/
