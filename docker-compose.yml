@@ -63,5 +63,26 @@ services:
       backend:
         condition: service_healthy
 
+  # Резервные копии базы: pg_dump раз в сутки в ./backups на хосте,
+  # хранение 14 дней. Восстановление — docs/16-backups.md.
+  # Тот же образ, что у базы: версия pg_dump совпадает с версией сервера.
+  backup:
+    image: postgres:16-alpine
+    entrypoint: ["/bin/sh", "/pg-backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGDATABASE: ${POSTGRES_DB:-vacation}
+      PGUSER: ${POSTGRES_USER:-vacation}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-vacation}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+    volumes:
+      - ./deploy/backup/pg-backup.sh:/pg-backup.sh:ro
+      - ${BACKUP_HOST_DIR:-./backups}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres-data:
