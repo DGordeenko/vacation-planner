@@ -7,7 +7,7 @@
 
 import type {
   Absence, AbsenceReason, AbsenceSummary, AnnualSummary, AuditEntityType, AuditRow, CheckResult,
-  TimeOffBalance, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
+  RvdCompensation, RvdRow, TimeOffBalance, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
   DemoRoleCode, EmployeeBrief, EmployeeImportReport, Invitation, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
   TeamEntryDetail, TeamScope,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
@@ -297,6 +297,23 @@ export const timeOffApi = {
   recordAbsence: (data: AbsenceInput) =>
     request<Absence>("/absences/", { method: "POST", body: JSON.stringify(data) }),
   deleteAbsence: (id: string) => request<void>(`/absences/${id}/`, { method: "DELETE" }),
+};
+
+export interface RvdInput {
+  employee: string;
+  date_from: string;
+  work_hours: string;
+  rvd_compensation_type: RvdCompensation;
+  task_link: string;
+}
+
+/** Работа в выходные дни: вносит администратор за прошедший месяц. */
+export const rvdApi = {
+  month: (year: number, month: number) =>
+    request<Paginated<RvdRow>>(`/admin/rvd/?year=${year}&month=${month}&page_size=500`),
+  create: (data: RvdInput) =>
+    request<RvdRow>("/admin/rvd/", { method: "POST", body: JSON.stringify(data) }),
+  remove: (id: string) => request<void>(`/admin/rvd/${id}/`, { method: "DELETE" }),
 };
 
 export interface AbsenceInput {

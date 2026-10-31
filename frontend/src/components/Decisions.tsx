@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { managerApi } from "../api";
-import { fmt } from "../dates";
+import { fmt, weekdayName } from "../dates";
 import type {
   ApprovalDecision, DayOffDecision, Decisions as DecisionsData, ExceptionDecision,
 } from "../types";
@@ -282,12 +282,11 @@ function DayOffCard({ item, onDone }: {
     }
   }
 
-  const weekday = new Date(`${item.date_from}T00:00:00`).toLocaleDateString("ru-RU", { weekday: "long" });
   return (
     <article className="vs-card vs-decision">
       <header className="vs-decision-head">
         <strong>{item.employee_name}</strong>
-        <span className="vs-muted">отгул {fmt(item.date_from)}, {weekday}</span>
+        <span className="vs-muted">отгул {fmt(item.date_from)}, {weekdayName(item.date_from)}</span>
       </header>
       <div className="vs-muted vs-small">
         На счёте {item.balance.hours} ч — хватает на {item.balance.available_days} дн.

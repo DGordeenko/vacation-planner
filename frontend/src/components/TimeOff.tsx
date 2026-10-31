@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { timeOffApi, type AbsenceInput } from "../api";
-import { fmt, iso } from "../dates";
+import { fmt, todayIso } from "../dates";
 import type {
   Absence, AbsenceReason, AbsenceSummary, Me, ScheduleEntry, TimeOffBalance, Violation,
 } from "../types";
@@ -144,7 +144,7 @@ function DayOffs({ me, onChanged }: { me: Me; onChanged: () => void }) {
       <div className="vs-timeoff-form">
         <label className="vs-field">
           Дата отгула
-          <input type="date" value={day} min={iso(new Date())}
+          <input type="date" value={day} min={todayIso()}
             onChange={(e) => { setDay(e.target.value); setDone(null); }} />
         </label>
         <button className="vs-btn primary" disabled={!canRequest} onClick={request}>
@@ -269,7 +269,7 @@ function Absences({ me, onChanged }: { me: Me; onChanged: () => void }) {
 
   const ready = useMemo(() => checkedKey === key && problems.length === 0 && !busy,
     [checkedKey, key, problems, busy]);
-  const today = iso(new Date());
+  const today = todayIso();
 
   return (
     <section className="vs-card vs-timeoff-card">
