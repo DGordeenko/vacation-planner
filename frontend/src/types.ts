@@ -167,6 +167,16 @@ export interface ImportReport {
   preview: { date: string; name: string; day_type: DayType }[];
 }
 
+export interface EmployeeImportReport {
+  applied: boolean;
+  dry_run: boolean;
+  total_rows: number;
+  created: number;
+  updated: number;
+  problems: ImportProblem[];
+  warnings: ImportProblem[];
+}
+
 export interface CalendarImpact {
   year: number;
   affected_entries: number;

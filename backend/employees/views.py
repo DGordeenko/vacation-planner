@@ -1,10 +1,15 @@
+import base64
+import binascii
+
 from django.contrib.auth import authenticate
 from rest_framework import status
 from rest_framework.authtoken.models import Token
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from audit.drf import RecordAuditActor
+from employees.importers import import_employees
 from employees.models import Employee
 
 
@@ -92,3 +97,47 @@ class AuthMeView(APIView):
             "tags": [et.tag.name for et in user.employee_tags.select_related("tag")],
             "email_notifications_enabled": user.email_notifications_enabled,
         })
+
+
+class IsCompanyAdmin(BasePermission):
+    message = "Загружать сотрудников может только администратор"
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated
+                    and request.user.is_admin)
+
+
+class EmployeeImportView(APIView):
+    """Загрузка кадровой выгрузки из CSV (ФЗ 4.2.1, UX 2.5).
+
+    `dry_run=true` — предпросмотр: загрузка выполняется целиком и откатывается,
+    поэтому администратор видит все проблемы и итоговые счётчики до применения.
+    Загрузка применяется целиком или не применяется вовсе.
+    """
+
+    permission_classes = [RecordAuditActor, IsCompanyAdmin]
+
+    def post(self, request):
+        content = request.data.get("content")
+        if not content or not isinstance(content, str):
+            return Response({"detail": "Не передано содержимое файла"},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            raw = base64.b64decode(content, validate=True)
+        except (binascii.Error, ValueError):
+            return Response({"detail": "Не удалось разобрать файл"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        dry_run = bool(request.data.get("dry_run"))
+        report = import_employees(raw, dry_run=dry_run)
+        payload = {
+            "applied": report.applied and not dry_run,
+            "dry_run": dry_run,
+            "total_rows": report.total_rows,
+            "created": report.created,
+            "updated": report.updated,
+            "problems": [p.__dict__ for p in report.problems],
+            "warnings": [w.__dict__ for w in report.warnings],
+        }
+        return Response(payload, status=status.HTTP_200_OK if report.applied
+                        else status.HTTP_409_CONFLICT)

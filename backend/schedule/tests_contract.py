@@ -254,3 +254,26 @@ class ManagerScreensContractTests(TestCase):
             self.client.get(f"/api/v1/tags/{self.tag.id}/members/").json()[0]))
         self.assertEqual(EMPLOYEE_BRIEF_FIELDS, set(
             self.client.get("/api/v1/employees/search/?q=Сотр").json()[0]))
+
+
+# types.ts: EmployeeImportReport, ImportProblem
+EMPLOYEE_IMPORT_FIELDS = {"applied", "dry_run", "total_rows", "created", "updated",
+                          "problems", "warnings"}
+
+
+class EmployeeImportContractTests(TestCase):
+    def test_import_report_contract(self):
+        import base64
+        CompanySettings.get_solo()
+        admin = Employee.objects.create_user(
+            email="a@i.ru", employee_number="1", full_name="А", hire_date=date(2015, 1, 1))
+        admin.is_admin = True
+        admin.save()
+        client = APIClient()
+        client.force_authenticate(admin)
+        text = "employee_number;full_name;email;hire_date\n5;Б;;2015-01-01\n"
+        body = client.post("/api/v1/employees/import-csv/", {
+            "content": base64.b64encode(text.encode()).decode(), "dry_run": True},
+            format="json").json()
+        self.assertEqual(EMPLOYEE_IMPORT_FIELDS, set(body))
+        self.assertEqual({"row", "column", "value", "message"}, set(body["problems"][0]))
