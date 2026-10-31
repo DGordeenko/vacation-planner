@@ -1,5 +1,6 @@
 import re
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import Q
@@ -321,6 +322,82 @@ class HolidayListView(APIView):
         ])
 
 
+# Допустимые значения настроек: за пределами — заведомая ошибка ввода,
+# а не осознанное решение (норма 600 дней, 0 уровней согласования).
+SETTINGS_LIMITS = {
+    "annual_vacation_norm_days": (Decimal("1"), Decimal("90")),
+    "monthly_accrual_rate": (Decimal("0"), Decimal("10")),
+    "approval_levels": (1, 5),
+    "workday_hours": (Decimal("1"), Decimal("24")),
+}
+
+
+def _settings_payload(row):
+    return {
+        "annual_vacation_norm_days": float(row.annual_vacation_norm_days),
+        "monthly_accrual_rate": float(row.monthly_accrual_rate),
+        "approval_levels": row.approval_levels,
+        "workday_hours": float(row.workday_hours),
+        "rvd_compensation_tracking_enabled": row.rvd_compensation_tracking_enabled,
+    }
+
+
+class CompanySettingsView(APIView):
+    """Глобальные настройки расчётов. Читают все, меняет администратор.
+
+    Изменение действует сразу и на всех: баланс не хранится, а считается,
+    поэтому новая ставка начисления пересчитывает остатки задним числом.
+    Интерфейс предупреждает об этом перед сохранением.
+    """
+
+    def get(self, request):
+        return Response(_settings_payload(CompanySettings.get_solo()))
+
+    def patch(self, request):
+        if not request.user.is_admin:
+            return Response({"detail": "Только администратор"},
+                            status=status.HTTP_403_FORBIDDEN)
+        row = CompanySettings.get_solo()
+        errors = {}
+        for field, (low, high) in SETTINGS_LIMITS.items():
+            if field not in request.data:
+                continue
+            raw = request.data[field]
+            try:
+                value = int(raw) if field == "approval_levels" else Decimal(str(raw))
+                if field == "approval_levels" and str(raw).strip() != str(value):
+                    raise ValueError
+            except (InvalidOperation, ValueError, TypeError):
+                errors[field] = ["Ожидается число"]
+                continue
+            if not low <= value <= high:
+                errors[field] = [f"Допустимо от {low} до {high}"]
+                continue
+            setattr(row, field, value)
+        flag = request.data.get("rvd_compensation_tracking_enabled")
+        if flag is not None:
+            if not isinstance(flag, bool):
+                errors["rvd_compensation_tracking_enabled"] = ["Ожидается да или нет"]
+            else:
+                row.rvd_compensation_tracking_enabled = flag
+        if errors:
+            return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+        row.save()
+        return Response(_settings_payload(row))
+
+
+def _luminance(hex_colour):
+    channels = [int(hex_colour[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    linear = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def contrast_ratio(first, second):
+    """Контрастность по WCAG 2.1: от 1 (одинаковые) до 21 (чёрный на белом)."""
+    light, dark = sorted((_luminance(first), _luminance(second)), reverse=True)
+    return (light + 0.05) / (dark + 0.05)
+
+
 class BrandingView(APIView):
     """Оформление под компанию. Читают все, меняет администратор."""
 
@@ -345,6 +422,23 @@ class BrandingView(APIView):
         colour = request.data.get("brand_primary_color")
         if colour and not re.fullmatch(r"#[0-9A-Fa-f]{6}", colour):
             return Response({"errors": {"brand_primary_color": ["Ожидается цвет вида #RRGGBB"]}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        text = request.data.get("brand_contrast_color", row.brand_contrast_color) or "#FFFFFF"
+        if not re.fullmatch(r"#[0-9A-Fa-f]{6}", text):
+            return Response({"errors": {"brand_contrast_color": ["Ожидается цвет вида #RRGGBB"]}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # Цвет бренда — фон кнопок с текстом: при контрасте ниже 4.5 (WCAG AA)
+        # надписи на кнопках плохо читаются (06-ux-branding.md).
+        base = colour or row.brand_primary_color
+        if re.fullmatch(r"#[0-9A-Fa-f]{6}", base or "") and contrast_ratio(base, text) < 4.5:
+            ratio = contrast_ratio(base, text)
+            return Response({"errors": {"brand_primary_color": [
+                f"Текст на кнопках будет плохо читаться: контраст {ratio:.1f}, "
+                "нужно не меньше 4.5. Выберите цвет темнее"]}},
+                status=status.HTTP_400_BAD_REQUEST)
+        name = request.data.get("organization_name")
+        if name is not None and not str(name).strip():
+            return Response({"errors": {"organization_name": ["Название не может быть пустым"]}},
                             status=status.HTTP_400_BAD_REQUEST)
         for field in allowed:
             if field in request.data:
@@ -472,6 +566,13 @@ class TimeOffBalanceView(APIView):
         employee = get_object_or_404(Employee, id=employee_id)
 
         summary = calculations.time_off_summary(employee)
+        # Отгулы на согласовании часы ещё не списали, но новый отгул под них
+        # уже не дадут (validate_day_off): показываем, сколько можно попросить.
+        pending = ScheduleEntry.objects.filter(
+            employee=employee, record_type=ScheduleEntry.RecordType.DAY_OFF,
+            status=ScheduleEntry.Status.PENDING_APPROVAL).count()
+        summary["pending_days"] = pending
+        summary["free_days"] = max(summary["available_days"] - pending, 0)
         summary["history"] = [
             {
                 "date": row.entry_date,
@@ -490,10 +591,14 @@ class DayOffViewSet(viewsets.ModelViewSet):
     serializer_class = ScheduleEntrySerializer
 
     def get_queryset(self):
-        return ScheduleEntry.objects.filter(
+        queryset = ScheduleEntry.objects.filter(
             record_type=ScheduleEntry.RecordType.DAY_OFF,
             employee_id__in=self.request.user.visible_employee_ids(),
         ).select_related("employee")
+        employee_id = self.request.query_params.get("employee_id")
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+        return queryset.order_by("-date_from")
 
     @action(detail=False, methods=["post"])
     def validate(self, request):

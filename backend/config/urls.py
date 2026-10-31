@@ -12,7 +12,10 @@ from schedule.team import (
 from audit.views import AuditLogViewSet
 from company.views import HolidayAdminViewSet
 
-from employees.views import AuthMeView, InvitationAcceptView, LoginView
+from employees.views import (
+    AuthMeView, EmployeeImportView, InvitationAcceptView, InvitationListView,
+    InvitationReissueView, LoginView,
+)
 from sso.views import (
     AuthMethodsView,
     NegotiateView,
@@ -31,6 +34,7 @@ from schedule.views import (
     AnnualSummaryView,
     BalanceView,
     BrandingView,
+    CompanySettingsView,
     HolidayListView,
     EntryExceptionView,
     ScheduleApprovalViewSet,
@@ -65,6 +69,10 @@ urlpatterns = [
     path("api/v1/auth/me/", AuthMeView.as_view()),
     path("api/v1/auth/accept-invitation/", InvitationAcceptView.as_view()),
     path("api/v1/employees/search/", EmployeeSearchView.as_view()),
+    path("api/v1/employees/import-csv/", EmployeeImportView.as_view()),
+    path("api/v1/admin/invitations/", InvitationListView.as_view()),
+    path("api/v1/admin/invitations/<uuid:employee_id>/reissue/",
+         InvitationReissueView.as_view()),
     path("api/v1/employees/<uuid:employee_id>/balance/", BalanceView.as_view()),
     path("api/v1/employees/<uuid:employee_id>/time-off-balance/",
          TimeOffBalanceView.as_view()),
@@ -72,6 +80,7 @@ urlpatterns = [
          AbsenceSummaryView.as_view()),
     path("api/v1/employees/<uuid:employee_id>/annual-summary/", AnnualSummaryView.as_view()),
     path("api/v1/holidays/", HolidayListView.as_view()),
+    path("api/v1/settings/", CompanySettingsView.as_view()),
     path("api/v1/settings/branding/", BrandingView.as_view()),
     path("api/v1/employees/<uuid:employee_id>/submit-year/", SubmitYearView.as_view()),
     path("api/v1/employees/<uuid:employee_id>/amendments/", AmendmentView.as_view()),

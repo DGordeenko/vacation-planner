@@ -70,7 +70,7 @@ REST_FRAMEWORK = {
         'audit.drf.RecordAuditActor',
         'rest_framework.permissions.IsAuthenticated',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'config.pagination.Pagination',
     'PAGE_SIZE': 50,
 }
 

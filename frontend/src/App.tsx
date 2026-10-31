@@ -8,6 +8,11 @@ import { ExistingEntryPanel, SelectionPanel } from "./components/EntryPanel";
 import HolidayAdmin from "./components/HolidayAdmin";
 import Decisions from "./components/Decisions";
 import TeamCalendar from "./components/TeamCalendar";
+import EmployeeImport from "./components/EmployeeImport";
+import AuditLog from "./components/AuditLog";
+import Settings from "./components/Settings";
+import TimeOff from "./components/TimeOff";
+import RvdAdmin from "./components/RvdAdmin";
 import TagsAdmin from "./components/TagsAdmin";
 import type {
   AnnualSummary, Branding, Holiday, Me, Notification,
@@ -25,7 +30,10 @@ function bestContrast(hex: string) {
 }
 
 export default function App() {
-  const [authorized, setAuthorized] = useState(Boolean(restoreToken()));
+  // Ссылка-приглашение открывает экран задания пароля, даже если в этом
+  // браузере уже кто-то вошёл: иначе ссылка молча откроет чужой график.
+  const [authorized, setAuthorized] = useState(
+    () => Boolean(restoreToken()) && !new URLSearchParams(window.location.search).has("invite"));
   const [me, setMe] = useState<Me | null>(null);
   const [branding, setBranding] = useState<Branding | null>(null);
   const [summary, setSummary] = useState<AnnualSummary | null>(null);
@@ -46,7 +54,7 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<
-    "schedule" | "holidays" | "decisions" | "team" | "tags">("schedule");
+    "schedule" | "holidays" | "decisions" | "team" | "tags" | "employees" | "audit" | "settings" | "timeoff" | "rvd">("schedule");
   const [decisionsCount, setDecisionsCount] = useState(0);
 
   const reload = useCallback(async () => {
@@ -285,6 +293,8 @@ export default function App() {
           <nav className="vs-nav" aria-label="Разделы">
             <button className="vs-nav-item" aria-current={view === "schedule"}
               onClick={() => setView("schedule")}>Мой график</button>
+            <button className="vs-nav-item" aria-current={view === "timeoff"}
+              onClick={() => setView("timeoff")}>Отгулы</button>
             {(me.is_manager || me.is_admin) && (
               <>
                 <button className="vs-nav-item" aria-current={view === "decisions"}
@@ -300,8 +310,16 @@ export default function App() {
             )}
             {me.is_admin && (
               <>
+                <button className="vs-nav-item" aria-current={view === "employees"}
+                  onClick={() => setView("employees")}>Сотрудники</button>
+                <button className="vs-nav-item" aria-current={view === "rvd"}
+                  onClick={() => setView("rvd")}>РВД</button>
                 <button className="vs-nav-item" aria-current={view === "holidays"}
                   onClick={() => setView("holidays")}>Праздники</button>
+                <button className="vs-nav-item" aria-current={view === "audit"}
+                  onClick={() => setView("audit")}>Журнал</button>
+                <button className="vs-nav-item" aria-current={view === "settings"}
+                  onClick={() => setView("settings")}>Настройки</button>
               </>
             )}
           </nav>
@@ -319,6 +337,18 @@ export default function App() {
 
       {view === "holidays" ? (
         <HolidayAdmin onBack={() => { setView("schedule"); void reload(); }} />
+      ) : view === "rvd" ? (
+        <RvdAdmin onBack={() => setView("schedule")} />
+      ) : view === "timeoff" ? (
+        <TimeOff me={me} onBack={() => { setView("schedule"); void reload(); }}
+          onChanged={() => void reload()} />
+      ) : view === "settings" ? (
+        <Settings branding={branding} onBack={() => { setView("schedule"); void reload(); }}
+          onBrandingChanged={() => void reload()} />
+      ) : view === "audit" ? (
+        <AuditLog onBack={() => setView("schedule")} />
+      ) : view === "employees" ? (
+        <EmployeeImport onBack={() => { setView("schedule"); void reload(); }} />
       ) : view === "decisions" ? (
         <Decisions onBack={() => { setView("schedule"); void reload(); }}
           onChanged={() => void reload()} />

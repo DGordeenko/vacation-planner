@@ -93,16 +93,45 @@ def exceptions_awaiting(user):
     return result
 
 
+def day_offs_awaiting(user):
+    """Отгулы, которые ждут решения этого человека.
+
+    Отгул согласует непосредственный руководитель (DayOffViewSet.approve).
+    Администратор видит отгулы сотрудников, у которых руководителя нет:
+    иначе их заявки повисли бы без адресата.
+    """
+    pending = (ScheduleEntry.objects
+               .filter(record_type=ScheduleEntry.RecordType.DAY_OFF,
+                       status=ScheduleEntry.Status.PENDING_APPROVAL)
+               .select_related("employee", "employee__org_unit").order_by("date_from"))
+    result = []
+    for entry in pending:
+        manager = entry.employee.manager
+        mine = (manager is not None and manager.id == user.id) or \
+            (manager is None and user.is_admin)
+        if not mine:
+            continue
+        result.append({
+            **_entry_row(entry),
+            "employee_id": str(entry.employee_id),
+            "employee_name": entry.employee.full_name,
+            "balance": calculations.time_off_summary(entry.employee),
+        })
+    return result
+
+
 class DecisionsView(APIView):
-    """«Требует моего решения»: графики на согласовании и запросы исключений."""
+    """«Требует моего решения»: графики на согласовании, запросы исключений, отгулы."""
 
     def get(self, request):
         approvals_list = approvals_awaiting(request.user)
         exceptions_list = exceptions_awaiting(request.user)
+        day_offs = day_offs_awaiting(request.user)
         return Response({
-            "count": len(approvals_list) + len(exceptions_list),
+            "count": len(approvals_list) + len(exceptions_list) + len(day_offs),
             "approvals": approvals_list,
             "exceptions": exceptions_list,
+            "day_offs": day_offs,
         })
 
 
