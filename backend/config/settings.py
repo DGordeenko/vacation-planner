@@ -85,30 +85,42 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL") or "vacation@example.c
 # (Django 6.1 не принимает старые EMAIL_HOST и т. п. рядом с MAILERS).
 
 # --- Доменная аутентификация -------------------------------------------
-# Значения задаются при развёртывании (переменные окружения / local settings).
+# Все значения — из переменных окружения (docs/11-sso-setup.md). Раньше они
+# были зашиты здесь, и в контейнере доменный вход было не включить.
 
-SSO_ALLOW_PASSWORD_LOGIN = True  # вход по паролю оставлен как запасной
+
+def _env_bool(name, default):
+    return os.environ.get(name, str(default)).strip().lower() in ("1", "true", "yes")
+
+
+def _env_map(name):
+    """«CORP.LOCAL=corp.ru,SUB.CORP.LOCAL=corp.ru» → словарь."""
+    pairs = (item.split("=", 1) for item in _env_list(name) if "=" in item)
+    return {key.strip(): value.strip() for key, value in pairs}
+
+
+SSO_ALLOW_PASSWORD_LOGIN = _env_bool("SSO_ALLOW_PASSWORD_LOGIN", True)  # запасной вход
 
 SSO_KERBEROS = {
-    "enabled": False,
+    "enabled": _env_bool("KERBEROS_ENABLED", False),
     # Путь к keytab со служебным принципалом HTTP/<сервер>@<REALM>.
-    "keytab": "",
+    "keytab": os.environ.get("KRB5_KTNAME", ""),
     # Realm в AD и почтовый домен часто различаются (CORP.LOCAL vs corp.ru).
-    "realm_to_email_domain": {},
-    "email_domain": "",
+    "realm_to_email_domain": _env_map("KERBEROS_REALM_MAP"),
+    "email_domain": os.environ.get("KERBEROS_EMAIL_DOMAIN", ""),
 }
 
 SSO_OIDC = {
-    "enabled": False,
-    "server_url": "",
-    "realm": "",
-    "client_id": "",
-    "client_secret": "",
-    "redirect_uri": "",
-    "scope": "openid email profile",
-    "button_title": "Войти через Keycloak",
-    "verify_tls": True,
-    "timeout": 10,
+    "enabled": _env_bool("OIDC_ENABLED", False),
+    "server_url": os.environ.get("OIDC_SERVER_URL", ""),
+    "realm": os.environ.get("OIDC_REALM", ""),
+    "client_id": os.environ.get("OIDC_CLIENT_ID", ""),
+    "client_secret": os.environ.get("OIDC_CLIENT_SECRET", ""),
+    "redirect_uri": os.environ.get("OIDC_REDIRECT_URI", ""),
+    "scope": os.environ.get("OIDC_SCOPE") or "openid email profile",
+    "button_title": os.environ.get("OIDC_BUTTON_TITLE") or "Войти через Keycloak",
+    "verify_tls": _env_bool("OIDC_VERIFY_TLS", True),
+    "timeout": int(os.environ.get("OIDC_TIMEOUT") or "10"),
 }
 
 CORS_ALLOWED_ORIGINS = _env_list(

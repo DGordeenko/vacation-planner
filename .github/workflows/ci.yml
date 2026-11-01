@@ -83,6 +83,10 @@ jobs:
       # ошибка импорта ломает CI, а не запуск на площадке.
       - name: Образ бэкенда
         run: docker build -t vacation-backend:ci backend
+      - name: Образ бэкенда с Kerberos
+        run: |
+          docker build --build-arg WITH_KERBEROS=1 -t vacation-backend:krb backend
+          docker run --rm --entrypoint python vacation-backend:krb -c "import gssapi; print('gssapi', gssapi.__name__)"
       - name: Образ фронтенда
         run: docker build -t vacation-frontend:ci frontend
       # Тот же путь, что у пользователей: compose поднимает базу, бэкенд

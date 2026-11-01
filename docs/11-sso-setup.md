@@ -56,15 +56,25 @@ chmod 400 /etc/vacation.keytab
 
 ### 2.3. Настройки приложения
 
-```python
-SSO_KERBEROS = {
-    "enabled": True,
-    "keytab": "/etc/vacation.keytab",
-    # Realm в AD и почтовый домен часто различаются.
-    "realm_to_email_domain": {"CORP.LOCAL": "corp.ru"},
-    "email_domain": "corp.ru",   # запасной вариант для принципалов без realm
-}
+Переменные окружения бэкенда:
+
+```bash
+KERBEROS_ENABLED=True
+KRB5_KTNAME=/etc/vacation.keytab
+# Realm в AD и почтовый домен часто различаются; несколько — через запятую
+KERBEROS_REALM_MAP=CORP.LOCAL=corp.ru
+KERBEROS_EMAIL_DOMAIN=corp.ru      # запасной вариант для принципалов без realm
 ```
+
+**Образ с поддержкой Kerberos** собирается отдельно: библиотеки MIT Kerberos
+нужны не всем, поэтому в обычный образ не входят.
+
+```bash
+docker build --build-arg WITH_KERBEROS=1 -t vacation-backend:krb backend
+```
+
+Keytab монтируется в контейнер файлом (Docker: `volumes`, Kubernetes: Secret
+как том) с правами только на чтение для пользователя `app` (UID 1000).
 
 ### 2.4. Как это выглядит
 
@@ -111,19 +121,24 @@ Firefox — параметр `network.negotiate-auth.trusted-uris`.
 
 ### 3.2. Настройки приложения
 
-```python
-SSO_OIDC = {
-    "enabled": True,
-    "server_url": "https://keycloak.corp.ru",
-    "realm": "employees",
-    "client_id": "vacation-app",
-    "client_secret": "<из Keycloak>",
-    "redirect_uri": "https://vacation.corp.ru/auth/callback",
-    "scope": "openid email profile",
-    "button_title": "Войти через Keycloak",
-    "verify_tls": True,
-}
+Переменные окружения бэкенда:
+
+```bash
+OIDC_ENABLED=True
+OIDC_SERVER_URL=https://keycloak.corp.ru
+OIDC_REALM=employees
+OIDC_CLIENT_ID=vacation-app
+OIDC_CLIENT_SECRET=<из Keycloak>
+OIDC_REDIRECT_URI=https://vacation.corp.ru/
+# Необязательные: OIDC_SCOPE (openid email profile),
+# OIDC_BUTTON_TITLE (Войти через Keycloak), OIDC_VERIFY_TLS (True), OIDC_TIMEOUT (10)
 ```
+
+`OIDC_REDIRECT_URI` — адрес интерфейса: Keycloak возвращает пользователя
+туда с кодом, и экран входа сам завершает вход.
+
+До версии 1.2 эти значения были зашиты в `settings.py` и переменные
+не читались — в контейнере доменный вход было не включить.
 
 Секрет клиента хранится в переменных окружения, а не в репозитории.
 
