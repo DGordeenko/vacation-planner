@@ -41,6 +41,7 @@ from schedule.views import (
     ScheduleEntryViewSet,
     SubmitYearView,
     TimeOffBalanceView,
+    VacationNormOverridesView,
     ValidationRuleViewSet,
 )
 from sso.views import (
@@ -88,6 +89,7 @@ urlpatterns = [
     path("api/v1/holidays/", HolidayListView.as_view()),
     path("api/v1/settings/", CompanySettingsView.as_view()),
     path("api/v1/settings/rvd-tracking/", RvdTrackingOverridesView.as_view()),
+    path("api/v1/settings/vacation-norms/", VacationNormOverridesView.as_view()),
     path("api/v1/settings/branding/", BrandingView.as_view()),
     path("api/v1/employees/<uuid:employee_id>/submit-year/", SubmitYearView.as_view()),
     path("api/v1/employees/<uuid:employee_id>/amendments/", AmendmentView.as_view()),
