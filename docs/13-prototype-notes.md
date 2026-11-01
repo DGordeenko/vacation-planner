@@ -150,7 +150,7 @@
 cd backend
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py seed_demo
+DEBUG=True python manage.py seed_demo
 python manage.py runserver
 ```
 

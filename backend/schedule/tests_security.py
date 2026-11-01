@@ -8,6 +8,7 @@
 from datetime import date
 from decimal import Decimal
 
+from employees.models import Employee
 from schedule import calculations
 from schedule.models import ScheduleEntry
 from schedule.tests_approvals import ApprovalBase
@@ -99,3 +100,11 @@ class BadParametersTests(ApprovalBase):
         response = self.client.post("/api/v1/day-offs/validate/", {"date": "10.03.2027"},
                                     format="json")
         self.assertEqual(response.status_code, 400)
+
+
+class SeedDemoGuardTests(ApprovalBase):
+    def test_refuses_without_debug(self):
+        from django.core.management import CommandError, call_command
+        with self.assertRaises(CommandError):
+            call_command("seed_demo")
+        self.assertFalse(Employee.objects.filter(email="admin@demo.ru").exists())

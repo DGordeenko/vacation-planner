@@ -3,7 +3,8 @@
 import uuid
 from datetime import date
 
-from django.core.management.base import BaseCommand
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
 
 from company.models import AbsenceReason, CompanySettings, Holiday
 from config.commands import WorkingDatabaseChecks
@@ -57,7 +58,20 @@ HOLIDAYS_2027 = [
 class Command(WorkingDatabaseChecks, BaseCommand):
     help = "Наполняет базу демонстрационными данными"
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--allow-known-passwords", action="store_true",
+            help="Разрешить запуск при DEBUG=False (только для изолированного стенда)")
+
     def handle(self, *args, **options):
+        # Команда создаёт в РАБОЧЕЙ базе администратора с известным паролем.
+        # На сервере (DEBUG=False) это открытая дверь, поэтому без явного
+        # флага команда отказывается. Для показа есть демо-режим в отдельной базе.
+        if not settings.DEBUG and not options["allow_known_passwords"]:
+            raise CommandError(
+                "seed_demo создаёт учётные записи с паролем demo12345 в рабочей базе. "
+                "На сервере используйте демо-режим (docs/15-demo-mode.md); "
+                "для изолированного стенда — флаг --allow-known-passwords.")
         settings_row = CompanySettings.get_solo()
         settings_row.organization_name = "Демо-организация"
         settings_row.save()

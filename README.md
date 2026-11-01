@@ -99,11 +99,15 @@ curl http://localhost:8080/api/health/
 
 ### Тестовые учётные записи в рабочей базе
 
-Для разработки, когда нужны данные в основной базе, а не в демо:
+Для локальной разработки, когда нужны данные в основной базе, а не в демо:
 
 ```bash
-docker compose exec backend python manage.py seed_demo
+DEBUG=True python manage.py seed_demo
 ```
+
+Команда создаёт администратора с известным паролем в **рабочей** базе,
+поэтому при `DEBUG=False` (на сервере) отказывается запускаться. Показать
+систему на сервере — демо-режим, он живёт в отдельной базе.
 
 Создаёт оргструктуру, календарь праздников на 2027 год, теги с лимитами
 и учётные записи (пароль `demo12345`):
@@ -136,7 +140,7 @@ cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py seed_demo
+DEBUG=True python manage.py seed_demo
 python manage.py runserver        # http://localhost:8000
 ```
 
