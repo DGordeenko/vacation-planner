@@ -2,7 +2,6 @@
 
 import base64
 import binascii
-from datetime import date
 
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -12,6 +11,7 @@ from rest_framework.response import Response
 from audit.drf import RecordAuditActor
 from company.importers import import_holidays
 from company.models import Holiday
+from config.params import parse_year
 from schedule.models import ScheduleEntry
 
 
@@ -50,7 +50,7 @@ class HolidayAdminViewSet(viewsets.ModelViewSet):
         queryset = Holiday.objects.all()
         year = self.request.query_params.get("year")
         if year:
-            queryset = queryset.filter(date__year=year)
+            queryset = queryset.filter(date__year=parse_year(year))
         return queryset
 
     @action(detail=False, methods=["get"])
@@ -81,7 +81,7 @@ class HolidayAdminViewSet(viewsets.ModelViewSet):
         year = request.data.get("year")
         report = import_holidays(
             raw,
-            year=int(year) if year else None,
+            year=parse_year(year) if year else None,
             replace=bool(request.data.get("replace")),
             dry_run=bool(request.data.get("dry_run")),
         )
@@ -111,7 +111,8 @@ class HolidayAdminViewSet(viewsets.ModelViewSet):
         if not source or not target:
             return Response({"detail": "Нужны source_year и target_year"},
                             status=status.HTTP_400_BAD_REQUEST)
-        source, target = int(source), int(target)
+        source = parse_year(source, "source_year")
+        target = parse_year(target, "target_year")
 
         if Holiday.objects.filter(date__year=target).exists():
             return Response(
@@ -154,7 +155,7 @@ class HolidayAdminViewSet(viewsets.ModelViewSet):
         Отпуска не пересчитываются автоматически (см. 05-CALCULATIONS.md),
         поэтому администратор должен видеть масштаб последствий.
         """
-        year = int(request.query_params.get("year") or date.today().year)
+        year = parse_year(request.query_params.get("year"))
         entries = ScheduleEntry.objects.filter(
             record_type=ScheduleEntry.RecordType.VACATION,
             date_from__year=year,
