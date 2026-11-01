@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { tagsApi } from "../api";
 import type { EmployeeBrief, TagMember, TagRow } from "../types";
+import EmployeePicker from "./EmployeePicker";
 
 /** Справочник тегов: лимиты одновременного отсутствия и ручное назначение.
     Администратор меняет справочник и лимиты; руководитель назначает и снимает
@@ -31,6 +32,10 @@ export default function TagsAdmin({ onBack, canEdit }: { onBack: () => void; can
 
   async function create() {
     if (!newName.trim()) return;
+    if (newLimit.trim() && parseLimit(newLimit) === null) {
+      setError("Лимит — целое число больше нуля, или пусто для «без ограничения»");
+      return;
+    }
     try {
       await tagsApi.create(newName.trim(), parseLimit(newLimit));
       setNewName(""); setNewLimit("");
@@ -73,12 +78,14 @@ export default function TagsAdmin({ onBack, canEdit }: { onBack: () => void; can
           <label className="vs-field vs-inline-field">
             Новый тег
             <input value={newName} placeholder="Например, Доступ в ЦОД"
-              onChange={(e) => setNewName(e.target.value)} />
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void create()} />
           </label>
           <label className="vs-field vs-inline-field vs-limit-field">
             Лимит
             <input value={newLimit} inputMode="numeric" placeholder="—"
-              onChange={(e) => setNewLimit(e.target.value)} />
+              onChange={(e) => setNewLimit(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void create()} />
           </label>
           <button className="vs-btn" onClick={create} disabled={!newName.trim()}>Создать</button>
         </div>}
@@ -170,8 +177,6 @@ function TagMembers({ tag, canEdit, onChanged, onError }: {
   onError: (message: string) => void;
 }) {
   const [members, setMembers] = useState<TagMember[] | null>(null);
-  const [query, setQuery] = useState("");
-  const [found, setFound] = useState<EmployeeBrief[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -183,18 +188,9 @@ function TagMembers({ tag, canEdit, onChanged, onError }: {
 
   useEffect(() => { void load(); }, [load]);
 
-  useEffect(() => {
-    if (query.trim().length < 2) { setFound([]); return; }
-    const timer = window.setTimeout(() => {
-      tagsApi.searchEmployees(query.trim()).then(setFound).catch(() => setFound([]));
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [query]);
-
   async function assign(employee: EmployeeBrief) {
     try {
       await tagsApi.assign(tag.id, employee.id);
-      setQuery(""); setFound([]);
       await load(); onChanged();
     } catch (err) {
       onError(err instanceof Error ? err.message : "Не удалось назначить тег");
@@ -235,25 +231,8 @@ function TagMembers({ tag, canEdit, onChanged, onError }: {
       {!canEdit && (
         <p className="vs-muted vs-small">Показаны сотрудники вашей структуры.</p>
       )}
-      <label className="vs-field">
-        Добавить сотрудника
-        <input value={query} placeholder="ФИО или табельный номер"
-          onChange={(e) => setQuery(e.target.value)} />
-      </label>
-      {found.filter((e) => !memberIds.has(e.id)).length > 0 && (
-        <ul className="vs-list vs-found">
-          {found.filter((e) => !memberIds.has(e.id)).map((employee) => (
-            <li key={employee.id}>
-              <button className="vs-item vs-found-item" onClick={() => assign(employee)}>
-                <span>{employee.full_name}</span>
-                <span className="vs-muted vs-small">
-                  {employee.employee_number}{employee.org_unit ? ` · ${employee.org_unit}` : ""}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <EmployeePicker label="Добавить сотрудника" exclude={memberIds}
+        onSelect={(e) => { if (e) void assign(e); }} />
     </div>
   );
 }
