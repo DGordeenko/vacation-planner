@@ -15,16 +15,40 @@ from schedule.tests_approvals import ApprovalBase
 
 
 class EntryChangeRightsTests(ApprovalBase):
-    def test_entries_cannot_be_patched(self):
+    def test_status_cannot_be_patched(self):
         entry = self.add_vacation(date(2027, 7, 5), date(2027, 7, 18))
         self.client.force_authenticate(self.employee)
         response = self.client.patch(f"/api/v1/schedule-entries/{entry.id}/",
                                      {"status": "approved", "date_to": "2027-08-30"},
                                      format="json")
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 400)
         entry.refresh_from_db()
         self.assertEqual((entry.status, entry.date_to),
                          (ScheduleEntry.Status.DRAFT, date(2027, 7, 18)))
+
+    def test_patch_dates_goes_through_checks(self):
+        entry = self.add_vacation(date(2027, 7, 5), date(2027, 7, 18))
+        other = self.add_vacation(date(2027, 9, 6), date(2027, 9, 19))
+        self.client.force_authenticate(self.employee)
+        url = f"/api/v1/schedule-entries/{entry.id}/"
+        clash = self.client.patch(url, {"date_to": "2027-09-10"}, format="json")
+        self.assertEqual(clash.status_code, 409)  # пересечение со своим же отпуском
+        ok = self.client.patch(url, {"date_from": "2027-07-12", "date_to": "2027-07-25"},
+                               format="json")
+        self.assertEqual(ok.status_code, 200, ok.content)
+        self.assertEqual(ok.json()["date_from"], "2027-07-12")
+        self.assertTrue(ScheduleEntry.objects.filter(id=other.id).exists())
+
+    def test_manager_and_submitted_cannot_patch(self):
+        entry = self.add_vacation(date(2027, 7, 5), date(2027, 7, 18),
+                                  status=ScheduleEntry.Status.PENDING_APPROVAL)
+        self.client.force_authenticate(self.employee)
+        url = f"/api/v1/schedule-entries/{entry.id}/"
+        self.assertEqual(self.client.patch(url, {"date_to": "2027-07-20"},
+                                           format="json").status_code, 409)
+        self.client.force_authenticate(self.chief)
+        self.assertEqual(self.client.patch(url, {"date_to": "2027-07-20"},
+                                           format="json").status_code, 403)
 
     def test_status_ignored_on_create(self):
         self.client.force_authenticate(self.employee)

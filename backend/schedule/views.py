@@ -62,7 +62,7 @@ class ValidationRuleViewSet(viewsets.ModelViewSet):
 
 class ScheduleEntryViewSet(viewsets.ModelViewSet):
     serializer_class = ScheduleEntrySerializer
-    http_method_names = NO_UPDATE
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
         # Видимость определяется на сервере, а не фильтром на клиенте.
@@ -147,6 +147,54 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
         if result.violations:
             approvals.request_exception(entry, result.violations)
         return Response(self.get_serializer(entry).data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Смена дат черновика — через те же проверки, что и создание.
+
+        Раньше PATCH сохранял любые поля без проверок, включая статус.
+        Утверждённый отпуск меняется только через актуализацию графика
+        (amendments): открытие правок возвращает записи в черновик.
+        """
+        entry = self.get_object()
+        if entry.employee_id != request.user.id and not request.user.is_admin:
+            return Response({"detail": "Изменить запись может только её владелец"},
+                            status=status.HTTP_403_FORBIDDEN)
+        if entry.status not in (ScheduleEntry.Status.DRAFT, ScheduleEntry.Status.REJECTED):
+            return Response(
+                {"detail": "Отправленный или утверждённый отпуск нельзя изменить: "
+                           "отзовите график или откройте его для правок",
+                 "code": "entry_locked"},
+                status=status.HTTP_409_CONFLICT)
+        unknown = set(request.data) - {"date_from", "date_to"}
+        if unknown:
+            return Response({"detail": "Изменить можно только даты",
+                             "fields": sorted(unknown)}, status=status.HTTP_400_BAD_REQUEST)
+        payload = ValidateRequestSerializer(data={
+            "date_from": request.data.get("date_from", entry.date_from),
+            "date_to": request.data.get("date_to", entry.effective_date_to),
+            "record_type": entry.record_type})
+        payload.is_valid(raise_exception=True)
+        data = payload.validated_data
+        result = calculations.validate_entry(
+            entry.employee, data["date_from"], data["date_to"], entry.record_type,
+            exclude_entry_id=entry.id)
+        if any(not v.can_be_approved for v in result.violations):
+            return Response({"detail": "Период нельзя сохранить — выберите другие даты",
+                             "code": "validation_blocked",
+                             "violations": _violations_payload(result)},
+                            status=status.HTTP_409_CONFLICT)
+        with transaction.atomic():
+            entry.date_from, entry.date_to = data["date_from"], data["date_to"]
+            entry.status = ScheduleEntry.Status.DRAFT  # отклонённый после правки — снова черновик
+            entry.rejection_comment = ""
+            entry.save()
+            if result.violations:
+                approvals.request_exception(entry, result.violations)
+        return Response(self.get_serializer(entry).data)
+
+    def update(self, request, *args, **kwargs):
+        return Response({"detail": "Используйте PATCH с полями date_from и date_to"},
+                        status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     def destroy(self, request, *args, **kwargs):
         entry = self.get_object()

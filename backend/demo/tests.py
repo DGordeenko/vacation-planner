@@ -440,7 +440,8 @@ class EntrypointSecretKeyTests(SimpleTestCase):
     run_entrypoint = EntrypointTests.run_entrypoint
 
     def test_refuses_default_key(self):
-        for key in ("", "dev-only-insecure-key-replace-in-production"):
+        for key in ("", "dev-only-insecure-key-replace-in-production",
+                    "замените-на-случайное-значение"):
             with self.subTest(key=key):
                 calls = self.run_entrypoint(SECRET_KEY=key)
                 self.assertEqual(calls, [])

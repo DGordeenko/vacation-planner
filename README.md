@@ -157,7 +157,7 @@ npm run dev                       # http://localhost:5173
 
 ```bash
 cd backend && pip install -r requirements-dev.txt
-cd backend && ruff check . && python manage.py test        # 439 тестов
+cd backend && ruff check . && python manage.py test        # 453 тестов
 cd frontend && npm run lint && npx tsc -b && npm run build
 ```
 
@@ -172,7 +172,8 @@ cd frontend && npm run lint && npx tsc -b && npm run build
 
 | Переменная | Назначение |
 |---|---|
-| `SECRET_KEY` | Ключ Django. Обязательно заменить в продакшене |
+| `SECRET_KEY` | Ключ Django, случайная строка от 50 символов. **Без неё контейнер не запустится** (`ALLOW_INSECURE_SECRET_KEY=1` — только для локальной проверки) |
+| `LOGIN_RATE` | Предел попыток входа с одного адреса, по умолчанию `10/min`; `0` — выключить |
 | `DEBUG` | По умолчанию `False` |
 | `ALLOWED_HOSTS` | Домены через запятую |
 | `DATABASE_URL` | `postgres://...`; без неё используется SQLite |
