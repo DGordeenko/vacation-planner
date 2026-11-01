@@ -10,6 +10,7 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, BasePermission
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
 from audit.drf import RecordAuditActor
@@ -17,8 +18,20 @@ from employees.importers import import_employees
 from employees.models import Employee
 
 
+class LoginThrottle(AnonRateThrottle):
+    """10 попыток в минуту с одного адреса — на вход по паролю и по ссылке."""
+
+    scope = "login"
+
+    def allow_request(self, request, view):
+        if (self.get_rate() or "") in ("0", "0/min", "off"):
+            return True
+        return super().allow_request(request, view)
+
+
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [LoginThrottle]
 
     def post(self, request):
         from sso.services import password_login_allowed
@@ -50,6 +63,7 @@ class InvitationAcceptView(APIView):
     """
 
     permission_classes = [AllowAny]
+    throttle_classes = [LoginThrottle]
 
     def post(self, request):
         token_value = request.data.get("invitation_token")
