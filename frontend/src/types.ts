@@ -230,6 +230,13 @@ export interface RvdTrackingOverrides {
   employees: { id: string; name: string; org_unit: string | null; value: boolean | null }[];
 }
 
+/** Индивидуальные нормы отпуска: ставку в месяц считает сервер. */
+export interface VacationNormOverrides {
+  company_norm: number;
+  employees: { id: string; name: string; org_unit: string | null; norm: number;
+    monthly_rate: number }[];
+}
+
 export interface ValidationRuleRow {
   code: string;
   name: string;
