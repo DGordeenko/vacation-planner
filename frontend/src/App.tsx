@@ -217,6 +217,10 @@ export default function App() {
   }
 
   async function remove(id: string) {
+    const entry = entries.find((e) => e.id === id);
+    const period = entry ? `${fmt(entry.date_from)} — ${fmt(entry.date_to || entry.date_from)}` : "";
+    // Удаление необратимо, а крестик в списке легко задеть.
+    if (!window.confirm(`Удалить отпуск ${period}?`)) return;
     try {
       await api.deleteEntry(id);
       setOpenEntry(null);

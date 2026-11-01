@@ -1,6 +1,6 @@
 """Просмотр журнала изменений."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.db import models
 from django.db.models import Q
@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from audit import recording
 from audit.labels import FIELD_LABELS
 from audit.models import AuditLog
+from config.params import parse_date
 
 
 def _models_by_name():
@@ -137,11 +138,8 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         until = params.get("until")
         if until:
             # Дата «по» включительно: всё до начала следующего дня.
-            try:
-                queryset = queryset.filter(
-                    changed_at__lt=date.fromisoformat(until) + timedelta(days=1))
-            except ValueError:
-                pass
+            queryset = queryset.filter(
+                changed_at__lt=parse_date(until, "until") + timedelta(days=1))
         return queryset
 
     @action(detail=False, methods=["get"], url_path="entity-types")

@@ -289,10 +289,10 @@ class EntrypointTests(SimpleTestCase):
                 stub.chmod(0o755)
             result = subprocess.run(
                 ["sh", str(script), *args], capture_output=True, text=True,
-                env={"PATH": f"{tmp}:/usr/bin:/bin", **env})
+                env={"PATH": f"{tmp}:/usr/bin:/bin", "SECRET_KEY": "test-secret", **env})
             self.stderr = result.stderr
             self.returncode = result.returncode
-            return log.read_text().splitlines()
+            return log.read_text().splitlines() if log.exists() else []
 
     def gunicorn_started(self, calls):
         return any(call.startswith("gunicorn") for call in calls)
@@ -432,3 +432,22 @@ class EntrypointCommandsTests(SimpleTestCase):
         self.assertTrue(self.gunicorn_started(calls))
         self.assertNotIn("python manage.py mail_scheduler", self.run_entrypoint(
             MAIL_NOTIFICATIONS_ENABLED="True", MAIL_SCHEDULER="0"))
+
+
+class EntrypointSecretKeyTests(SimpleTestCase):
+    """Без своего SECRET_KEY сервис не стартует."""
+
+    run_entrypoint = EntrypointTests.run_entrypoint
+
+    def test_refuses_default_key(self):
+        for key in ("", "dev-only-insecure-key-replace-in-production",
+                    "замените-на-случайное-значение"):
+            with self.subTest(key=key):
+                calls = self.run_entrypoint(SECRET_KEY=key)
+                self.assertEqual(calls, [])
+                self.assertEqual(self.returncode, 1)
+                self.assertIn("SECRET_KEY", self.stderr)
+
+    def test_local_override(self):
+        calls = self.run_entrypoint(SECRET_KEY="", ALLOW_INSECURE_SECRET_KEY="1")
+        self.assertTrue(any(call.startswith("gunicorn") for call in calls))

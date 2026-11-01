@@ -11,6 +11,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from company.models import AbsenceReason, CompanySettings, Holiday
+from config.params import parse_date, parse_year
+from config.permissions import ADMIN_ONLY, ADMIN_WRITES, visible_employee_or_403
 from employees.models import Employee
 from schedule import approvals, calculations
 from schedule.models import (
@@ -38,6 +40,16 @@ def _violations_payload(result):
     return ViolationSerializer([v.__dict__ for v in result.violations], many=True).data
 
 
+def _year_param(request):
+    """Год из ?year= или тела запроса (по умолчанию — текущий)."""
+    return parse_year(request.query_params.get("year") or request.data.get("year"))
+
+
+# Записи не редактируются: смена дат — это удаление и новая запись, которая
+# проходит все проверки заново. PATCH в обход проверок оставлял бы лазейку.
+NO_UPDATE = ["get", "post", "delete", "head", "options"]
+
+
 class ValidationRuleViewSet(viewsets.ModelViewSet):
     """Пороги правил читает и интерфейс — чтобы не зашивать 28/14/7 в клиент."""
 
@@ -45,19 +57,12 @@ class ValidationRuleViewSet(viewsets.ModelViewSet):
     serializer_class = ValidationRuleSerializer
     http_method_names = ["get", "patch", "head", "options"]
 
-    def get_permissions(self):
-        return super().get_permissions()
-
-    def update(self, request, *args, **kwargs):
-        if not request.user.is_admin:
-            return Response({"detail": "Только администратор"}, status=status.HTTP_403_FORBIDDEN)
-        return super().update(request, *args, **kwargs)
-
-    partial_update = update
+    permission_classes = ADMIN_WRITES
 
 
 class ScheduleEntryViewSet(viewsets.ModelViewSet):
     serializer_class = ScheduleEntrySerializer
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
         # Видимость определяется на сервере, а не фильтром на клиенте.
@@ -143,6 +148,69 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
             approvals.request_exception(entry, result.violations)
         return Response(self.get_serializer(entry).data, status=status.HTTP_201_CREATED)
 
+    def partial_update(self, request, *args, **kwargs):
+        """Смена дат черновика — через те же проверки, что и создание.
+
+        Раньше PATCH сохранял любые поля без проверок, включая статус.
+        Утверждённый отпуск меняется только через актуализацию графика
+        (amendments): открытие правок возвращает записи в черновик.
+        """
+        entry = self.get_object()
+        if entry.employee_id != request.user.id and not request.user.is_admin:
+            return Response({"detail": "Изменить запись может только её владелец"},
+                            status=status.HTTP_403_FORBIDDEN)
+        if entry.status not in (ScheduleEntry.Status.DRAFT, ScheduleEntry.Status.REJECTED):
+            return Response(
+                {"detail": "Отправленный или утверждённый отпуск нельзя изменить: "
+                           "отзовите график или откройте его для правок",
+                 "code": "entry_locked"},
+                status=status.HTTP_409_CONFLICT)
+        unknown = set(request.data) - {"date_from", "date_to"}
+        if unknown:
+            return Response({"detail": "Изменить можно только даты",
+                             "fields": sorted(unknown)}, status=status.HTTP_400_BAD_REQUEST)
+        payload = ValidateRequestSerializer(data={
+            "date_from": request.data.get("date_from", entry.date_from),
+            "date_to": request.data.get("date_to", entry.effective_date_to),
+            "record_type": entry.record_type})
+        payload.is_valid(raise_exception=True)
+        data = payload.validated_data
+        result = calculations.validate_entry(
+            entry.employee, data["date_from"], data["date_to"], entry.record_type,
+            exclude_entry_id=entry.id)
+        if any(not v.can_be_approved for v in result.violations):
+            return Response({"detail": "Период нельзя сохранить — выберите другие даты",
+                             "code": "validation_blocked",
+                             "violations": _violations_payload(result)},
+                            status=status.HTTP_409_CONFLICT)
+        with transaction.atomic():
+            entry.date_from, entry.date_to = data["date_from"], data["date_to"]
+            entry.status = ScheduleEntry.Status.DRAFT  # отклонённый после правки — снова черновик
+            entry.rejection_comment = ""
+            entry.save()
+            if result.violations:
+                approvals.request_exception(entry, result.violations)
+        return Response(self.get_serializer(entry).data)
+
+    def update(self, request, *args, **kwargs):
+        return Response({"detail": "Используйте PATCH с полями date_from и date_to"},
+                        status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def destroy(self, request, *args, **kwargs):
+        entry = self.get_object()
+        # Видимость шире прав: руководитель видит записи подчинённых,
+        # но удалять их не вправе.
+        if entry.employee_id != request.user.id and not request.user.is_admin:
+            return Response({"detail": "Удалить запись может только её владелец"},
+                            status=status.HTTP_403_FORBIDDEN)
+        if entry.status not in (ScheduleEntry.Status.DRAFT, ScheduleEntry.Status.REJECTED):
+            return Response(
+                {"detail": "Отправленный или утверждённый отпуск нельзя удалить: "
+                           "отзовите график или откройте его для правок",
+                 "code": "entry_locked"},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
+
 
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NotificationSerializer
@@ -170,14 +238,9 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
 
 class BalanceView(APIView):
     def get(self, request, employee_id):
-        visible = {str(i) for i in request.user.visible_employee_ids()}
-        if str(employee_id) not in visible:
-            return Response({"detail": "Нет доступа"}, status=status.HTTP_403_FORBIDDEN)
-        employee = Employee.objects.filter(id=employee_id).first()
-        if employee is None:
-            return Response({"detail": "Сотрудник не найден"}, status=status.HTTP_404_NOT_FOUND)
+        employee = visible_employee_or_403(request.user, employee_id)
         on_date = request.query_params.get("date")
-        target = date.fromisoformat(on_date) if on_date else date.today()
+        target = parse_date(on_date) if on_date else date.today()
         balance = calculations.balance_on(employee, target)
         return Response({
             "employee_id": str(employee.id),
@@ -243,8 +306,7 @@ class SubmitYearView(APIView):
         if employee != request.user and not request.user.is_admin:
             return Response({"detail": "Нельзя отправить чужой график"},
                             status=status.HTTP_403_FORBIDDEN)
-        year = int(request.query_params.get("year") or request.data.get("year")
-                   or date.today().year)
+        year = _year_param(request)
         try:
             approval = approvals.submit_year(employee, year, request.user)
         except approvals.ApprovalError as error:
@@ -286,11 +348,8 @@ class AnnualSummaryView(APIView):
     """Показатели готовности графика — норма, непрерывность, расход накопленных."""
 
     def get(self, request, employee_id):
-        visible = {str(i) for i in request.user.visible_employee_ids()}
-        if str(employee_id) not in visible:
-            return Response({"detail": "Нет доступа"}, status=status.HTTP_403_FORBIDDEN)
-        employee = get_object_or_404(Employee, id=employee_id)
-        year = int(request.query_params.get("year") or date.today().year)
+        employee = visible_employee_or_403(request.user, employee_id)
+        year = _year_param(request)
 
         summary = calculations.annual_summary(employee, year)
         summary["tags"] = calculations.tag_availability(employee, year)
@@ -325,7 +384,7 @@ class AnnualSummaryView(APIView):
 
 class HolidayListView(APIView):
     def get(self, request):
-        year = int(request.query_params.get("year") or date.today().year)
+        year = _year_param(request)
         rows = Holiday.objects.filter(date__year=year)
         return Response([
             {"date": row.date, "name": row.name, "day_type": row.day_type}
@@ -354,6 +413,8 @@ def _settings_payload(row):
 
 
 class CompanySettingsView(APIView):
+    permission_classes = ADMIN_WRITES
+
     """Глобальные настройки расчётов. Читают все, меняет администратор.
 
     Изменение действует сразу и на всех: баланс не хранится, а считается,
@@ -365,9 +426,6 @@ class CompanySettingsView(APIView):
         return Response(_settings_payload(CompanySettings.get_solo()))
 
     def patch(self, request):
-        if not request.user.is_admin:
-            return Response({"detail": "Только администратор"},
-                            status=status.HTTP_403_FORBIDDEN)
         row = CompanySettings.get_solo()
         errors = {}
         for field, (low, high) in SETTINGS_LIMITS.items():
@@ -412,6 +470,8 @@ def contrast_ratio(first, second):
 class BrandingView(APIView):
     """Оформление под компанию. Читают все, меняет администратор."""
 
+    permission_classes = ADMIN_WRITES
+
     def get(self, request):
         row = CompanySettings.get_solo()
         return Response({
@@ -424,9 +484,6 @@ class BrandingView(APIView):
         })
 
     def patch(self, request):
-        if not request.user.is_admin:
-            return Response({"detail": "Только администратор"},
-                            status=status.HTTP_403_FORBIDDEN)
         row = CompanySettings.get_solo()
         allowed = ["organization_name", "brand_primary_color", "brand_contrast_color",
                    "brand_radius", "brand_font_family"]
@@ -463,8 +520,7 @@ class AmendmentView(APIView):
 
     def post(self, request, employee_id):
         employee = get_object_or_404(Employee, id=employee_id)
-        year = int(request.query_params.get("year")
-                   or request.data.get("year") or date.today().year)
+        year = _year_param(request)
         try:
             amendment = approvals.open_amendment(employee, year, request.user)
         except approvals.ApprovalError as error:
@@ -504,11 +560,9 @@ class RvdAdminViewSet(viewsets.ModelViewSet):
     serializer_class = RvdSerializer
 
     def get_permissions(self):
-        from audit.drf import RecordAuditActor
-        from company.views import IsAdmin
         if self.action in ("list", "retrieve"):
             return super().get_permissions()
-        return [RecordAuditActor(), IsAdmin()]
+        return [permission() for permission in ADMIN_ONLY]
 
     def get_queryset(self):
         queryset = ScheduleEntry.objects.filter(
@@ -557,11 +611,6 @@ class RvdAdminViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], url_path="bulk")
     def bulk(self, request):
         """Ввод РВД сразу по нескольким сотрудникам за месяц."""
-        from company.views import IsAdmin
-        if not IsAdmin().has_permission(request, self):
-            return Response({"detail": "Только администратор"},
-                            status=status.HTTP_403_FORBIDDEN)
-
         rows = request.data.get("rows")
         if not isinstance(rows, list) or not rows:
             return Response({"detail": "Не передан список записей"},
@@ -589,10 +638,7 @@ class RvdAdminViewSet(viewsets.ModelViewSet):
 
 class TimeOffBalanceView(APIView):
     def get(self, request, employee_id):
-        visible = {str(i) for i in request.user.visible_employee_ids()}
-        if str(employee_id) not in visible:
-            return Response({"detail": "Нет доступа"}, status=status.HTTP_403_FORBIDDEN)
-        employee = get_object_or_404(Employee, id=employee_id)
+        employee = visible_employee_or_403(request.user, employee_id)
 
         summary = calculations.time_off_summary(employee)
         # Отгулы на согласовании часы ещё не списали, но новый отгул под них
@@ -618,6 +664,7 @@ class DayOffViewSet(viewsets.ModelViewSet):
     """Отгулы сотрудника."""
 
     serializer_class = ScheduleEntrySerializer
+    http_method_names = NO_UPDATE
 
     def get_queryset(self):
         queryset = ScheduleEntry.objects.filter(
@@ -635,8 +682,7 @@ class DayOffViewSet(viewsets.ModelViewSet):
         if not target:
             return Response({"detail": "Не указана дата"},
                             status=status.HTTP_400_BAD_REQUEST)
-        result = calculations.validate_day_off(
-            request.user, date.fromisoformat(target))
+        result = calculations.validate_day_off(request.user, parse_date(target))
         return Response({
             "is_valid": result.is_valid,
             "violations": _violations_payload(result),
@@ -649,7 +695,7 @@ class DayOffViewSet(viewsets.ModelViewSet):
         if not target:
             return Response({"detail": "Не указана дата"},
                             status=status.HTTP_400_BAD_REQUEST)
-        target_date = date.fromisoformat(target)
+        target_date = parse_date(target, "date_from")
 
         result = calculations.validate_day_off(request.user, target_date)
         if not result.is_valid:
@@ -716,10 +762,21 @@ class DayOffViewSet(viewsets.ModelViewSet):
                          f"Отгул на {entry.date_from} отклонён: {comment}", entry)
         return Response(self.get_serializer(entry).data)
 
-    def perform_destroy(self, instance):
-        if instance.employee_id != self.request.user.id and not self.request.user.is_admin:
-            raise PermissionError
-        instance.delete()  # регистр очистится каскадом
+    def destroy(self, request, *args, **kwargs):
+        entry = self.get_object()
+        if request.user.is_admin:
+            return super().destroy(request, *args, **kwargs)  # регистр очистится каскадом
+        if entry.employee_id != request.user.id:
+            return Response({"detail": "Отменить отгул может только сотрудник"},
+                            status=status.HTTP_403_FORBIDDEN)
+        # Согласованный отгул сотрудник не отменяет сам: удаление вернуло бы
+        # списанные часы задним числом. Отмена — через администратора.
+        if entry.status not in (ScheduleEntry.Status.PENDING_APPROVAL,
+                                ScheduleEntry.Status.REJECTED):
+            return Response({"detail": "Согласованный отгул отменяет администратор",
+                             "code": "day_off_locked"},
+                            status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
 
 
 class AbsenceReasonViewSet(viewsets.ModelViewSet):
@@ -729,11 +786,9 @@ class AbsenceReasonViewSet(viewsets.ModelViewSet):
     queryset = AbsenceReason.objects.all().order_by("name")
 
     def get_permissions(self):
-        from audit.drf import RecordAuditActor
-        from company.views import IsAdmin
         if self.action in ("list", "retrieve"):
             return super().get_permissions()
-        return [RecordAuditActor(), IsAdmin()]
+        return [permission() for permission in ADMIN_ONLY]
 
 
 class AbsenceViewSet(viewsets.ModelViewSet):
@@ -745,6 +800,7 @@ class AbsenceViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = AbsenceSerializer
+    http_method_names = NO_UPDATE
 
     def get_queryset(self):
         queryset = ScheduleEntry.objects.filter(
@@ -831,11 +887,8 @@ class AbsenceSummaryView(APIView):
     """Отдельный счётчик отсутствий, не влияющий на баланс отпуска."""
 
     def get(self, request, employee_id):
-        visible = {str(i) for i in request.user.visible_employee_ids()}
-        if str(employee_id) not in visible:
-            return Response({"detail": "Нет доступа"}, status=status.HTTP_403_FORBIDDEN)
-        employee = get_object_or_404(Employee, id=employee_id)
-        year = int(request.query_params.get("year") or date.today().year)
+        employee = visible_employee_or_403(request.user, employee_id)
+        year = _year_param(request)
         return Response(calculations.absence_summary(employee, year))
 
 
@@ -847,15 +900,9 @@ class RvdTrackingOverridesView(APIView):
     снять исключение; null — «как выше по структуре».
     """
 
-    def _deny(self, request):
-        if not request.user.is_admin:
-            return Response({"detail": "Только администратор"}, status=status.HTTP_403_FORBIDDEN)
-        return None
+    permission_classes = ADMIN_ONLY
 
     def get(self, request):
-        denied = self._deny(request)
-        if denied:
-            return denied
         from employees.models import OrgUnit
 
         def path(unit):
@@ -880,9 +927,6 @@ class RvdTrackingOverridesView(APIView):
         })
 
     def post(self, request):
-        denied = self._deny(request)
-        if denied:
-            return denied
         from employees.models import OrgUnit
 
         kind, value = request.data.get("kind"), request.data.get("value")

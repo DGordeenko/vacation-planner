@@ -1,4 +1,5 @@
 import { fmt } from "../dates";
+import { plural } from "../text";
 import type { ScheduleEntry, ValidationResult, Violation } from "../types";
 
 /** Нарушение с подсказкой, что делать, и списком коллег при пересечении. */
@@ -51,7 +52,11 @@ export function SelectionPanel({
     <div className="vs-panel" role="dialog" aria-label="Проверка отпуска">
       <div className="vs-panel-head">
         <strong>{fmt(selection.from)} — {fmt(selection.to)}</strong>
-        {check && <span className="vs-muted">{check.vacation_days} отпускных дней</span>}
+        {check && (
+          <span className="vs-muted">
+            {check.vacation_days} {plural(check.vacation_days, "отпускной день", "отпускных дня", "отпускных дней")}
+          </span>
+        )}
         <PanelClose onClose={onCancel} />
       </div>
 
@@ -124,18 +129,22 @@ export function ExistingEntryPanel({ entry, managerName, onClose, onDelete }: En
       <div className="vs-panel-head">
         <strong>{fmt(entry.date_from)} — {fmt(entry.date_to || entry.date_from)}</strong>
         {entry.vacation_days !== null && (
-          <span className="vs-muted">{entry.vacation_days} отпускных дней</span>
+          <span className="vs-muted">
+            {entry.vacation_days} {plural(entry.vacation_days, "отпускной день", "отпускных дня", "отпускных дней")}
+          </span>
         )}
         <PanelClose onClose={onClose} />
       </div>
       <div className="vs-panel-body">
-        <div className="vs-row">
-          <dt>Статус</dt>
-          <dd>{entry.status === "approved" ? "Согласован"
-            : rejected ? "Не подтверждён руководителем"
-            : entry.status === "pending_approval" ? "На согласовании"
-              : awaiting ? "Черновик, ждёт подтверждения" : "Черновик"}</dd>
-        </div>
+        <dl className="vs-rows">
+          <div className="vs-row">
+            <dt>Статус</dt>
+            <dd>{entry.status === "approved" ? "Согласован"
+              : rejected ? "Не подтверждён руководителем"
+              : entry.status === "pending_approval" ? "На согласовании"
+                : awaiting ? "Черновик, ждёт подтверждения" : "Черновик"}</dd>
+          </div>
+        </dl>
         {entry.pending_exceptions.map((violation) => (
           <ViolationCard key={violation.code} violation={violation}
             hint={`Запрос на подтверждение отправлен${managerName ? `: ${managerName}` : " руководителю"}. Отправить график можно после его решения.`} />
@@ -151,6 +160,8 @@ export function ExistingEntryPanel({ entry, managerName, onClose, onDelete }: En
             ? "Эти даты не входят в график. Удалите отпуск и выберите другой период."
             : editable
             ? "Чтобы изменить даты, удалите отпуск и выберите новый период."
+            : entry.status === "approved"
+            ? "График утверждён. Чтобы изменить даты, нажмите «Внести изменения» над календарём."
             : "Отпуск отправлен на согласование — отзовите график, чтобы править."}
         </p>
       </div>

@@ -70,6 +70,13 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_PAGINATION_CLASS': 'config.pagination.Pagination',
+    'EXCEPTION_HANDLER': 'config.exceptions.api_exception_handler',
+    # Ограничение попыток входа: без него пароль можно подбирать без остановки.
+    # Счётчики — в кэше процесса; при нескольких репликах предел действует
+    # на каждую, для перебора этого достаточно. LOGIN_RATE=0 — выключить.
+    'DEFAULT_THROTTLE_RATES': {
+        'login': os.environ.get('LOGIN_RATE') or '10/min',
+    },
     'PAGE_SIZE': 50,
 }
 

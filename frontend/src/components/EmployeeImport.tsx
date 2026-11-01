@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { plural } from "../text";
 import { ApiError, employeesAdminApi } from "../api";
 import type { EmployeeImportReport, ImportProblem } from "../types";
 import Invitations from "./Invitations";
@@ -151,13 +152,6 @@ export default function EmployeeImport({ onBack }: { onBack: () => void }) {
       <Invitations reloadKey={loaded} />
     </div>
   );
-}
-
-function plural(n: number, one: string, few: string, many: string) {
-  const mod10 = n % 10, mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
 }
 
 function ProblemTable({ rows }: { rows: ImportProblem[] }) {

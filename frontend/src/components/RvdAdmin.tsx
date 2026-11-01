@@ -1,17 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, rvdApi, tagsApi, type RvdInput } from "../api";
+import { api, rvdApi, type RvdInput } from "../api";
+import { fieldErrors } from "../text";
+import EmployeePicker from "./EmployeePicker";
 import { fmt, MONTHS, weekdayName } from "../dates";
 import type { EmployeeBrief, Holiday, RvdCompensation, RvdRow } from "../types";
-
-function fieldErrors(err: unknown): Record<string, string> {
-  if (!(err instanceof ApiError)) return {};
-  const body = (err.payload ?? {}) as Record<string, unknown>;
-  const result: Record<string, string> = {};
-  Object.entries(body).forEach(([key, value]) => {
-    if (Array.isArray(value)) result[key] = value.join(" ");
-  });
-  return result;
-}
 
 /** Прошедший месяц: по принятому процессу РВД вносят в начале месяца за предыдущий. */
 function previousMonth() {
@@ -145,8 +137,6 @@ const EMPTY = { date_from: "", work_hours: "8", rvd_compensation_type: "pay_plus
 
 function RvdForm({ onSaved }: { onSaved: (year: number, month: number) => void }) {
   const [person, setPerson] = useState<EmployeeBrief | null>(null);
-  const [query, setQuery] = useState("");
-  const [found, setFound] = useState<EmployeeBrief[]>([]);
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -167,14 +157,6 @@ function RvdForm({ onSaved }: { onSaved: (year: number, month: number) => void }
     if (!year) return;
     api.holidays(year).then(setHolidays).catch(() => setHolidays([]));
   }, [year]);
-
-  useEffect(() => {
-    if (query.trim().length < 2) { setFound([]); return; }
-    const timer = window.setTimeout(() => {
-      tagsApi.searchEmployees(query.trim()).then(setFound).catch(() => setFound([]));
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [query]);
 
   async function save() {
     if (!person) return;
@@ -203,34 +185,9 @@ function RvdForm({ onSaved }: { onSaved: (year: number, month: number) => void }
     <section className="vs-card vs-rvd-form">
       <h2 className="vs-section-title">Внести</h2>
       <div className="vs-timeoff-form">
-        <div className="vs-field vs-audit-person">
-          Сотрудник
-          {person ? (
-            <span className="vs-chip-picked">
-              {person.full_name}
-              <button className="vs-link" aria-label="Выбрать другого сотрудника"
-                onClick={() => { setPerson(null); setDone(null); }}>✕</button>
-            </span>
-          ) : (
-            <>
-              <input value={query} placeholder="ФИО или табельный" autoFocus
-                onChange={(e) => setQuery(e.target.value)} />
-              {found.length > 0 && (
-                <ul className="vs-list vs-found vs-audit-found">
-                  {found.slice(0, 8).map((e) => (
-                    <li key={e.id}>
-                      <button className="vs-item vs-found-item" onClick={() => {
-                        setPerson(e); setQuery(""); setFound([]);
-                      }}>
-                        <span>{e.full_name}</span>
-                        <span className="vs-muted vs-small">{e.employee_number}{e.org_unit ? ` · ${e.org_unit}` : ""}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
-          )}
+        <div className="vs-rvd-person">
+          <EmployeePicker label="Сотрудник" selected={person} autoFocus
+            onSelect={(e) => { setPerson(e); setDone(null); }} />
           {errors.employee && <span className="vs-field-error">{errors.employee}</span>}
         </div>
         <label className="vs-field">

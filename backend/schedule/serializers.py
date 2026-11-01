@@ -65,7 +65,10 @@ class ScheduleEntrySerializer(serializers.ModelSerializer):
             "rvd_compensation_type", "extended_by_holiday_days", "status",
             "vacation_days", "pending_exceptions", "rejection_comment", "created_at",
         ]
-        read_only_fields = ["extended_by_holiday_days", "rejection_comment", "created_at"]
+        # Статус меняет только сервер: отправка, согласование, отказ. Иначе
+        # сотрудник мог бы сам себе «утвердить» отпуск одним запросом.
+        read_only_fields = ["extended_by_holiday_days", "rejection_comment", "created_at",
+                            "status"]
 
     def get_vacation_days(self, obj):
         from schedule.calculations import vacation_days

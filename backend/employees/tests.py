@@ -358,3 +358,18 @@ class InvitationApiTests(TestCase):
         self.assertNotEqual(row["invitation_token"], str(old))
         self.assertEqual(self.accept(old, "Otpusk-2027!").status_code, 404)
         self.assertEqual(self.accept(row["invitation_token"], "Otpusk-2027!").status_code, 200)
+
+
+class LoginThrottleTests(TestCase):
+    """Подбор пароля упирается в предел попыток."""
+
+    def test_eleventh_attempt_in_a_minute_is_429(self):
+        from django.core.cache import cache
+        from rest_framework.test import APIClient
+        cache.clear()
+        client = APIClient()
+        codes = [client.post("/api/v1/auth/login/", {"email": "x@y.ru", "password": "bad"},
+                             format="json").status_code for _ in range(11)]
+        self.assertEqual(codes[:10], [401] * 10)
+        self.assertEqual(codes[10], 429)
+        cache.clear()

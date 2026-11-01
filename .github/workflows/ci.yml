@@ -93,6 +93,7 @@ jobs:
       # с миграциями и фронтенд с прокси; проверяем API через nginx.
       - name: Запуск через docker compose
         run: |
+          export SECRET_KEY=ci-compose-$(date +%s)-not-secret
           docker compose up -d --wait postgres backend frontend
           curl -fsS http://localhost:8080/api/health/
           curl -fsS http://localhost:8080/ | grep -q '<div id="root">'

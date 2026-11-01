@@ -8,6 +8,21 @@ if [ "$#" -gt 0 ]; then
     exec "$@"
 fi
 
+# Без собственного SECRET_KEY сервис не стартует: со значением по умолчанию
+# из репозитория подписи сессий и ссылок предсказуемы для любого.
+# Образец из .env.example — тоже не ключ: его видят все.
+case "${SECRET_KEY:-}" in
+    ""|dev-only-insecure-key-replace-in-production|замените-на-случайное-значение) KEY_IS_PUBLIC=1 ;;
+    *) KEY_IS_PUBLIC=0 ;;
+esac
+if [ "$KEY_IS_PUBLIC" = "1" ]; then
+    case "${ALLOW_INSECURE_SECRET_KEY:-0}" in 1|true|True|yes) ;; *)
+        echo "ОШИБКА: не задан SECRET_KEY. Задайте случайную строку от 50 символов" \
+             "(ALLOW_INSECURE_SECRET_KEY=1 — только для локальной проверки)." >&2
+        exit 1 ;;
+    esac
+fi
+
 # Миграции при старте удобны для Docker и Railway, где контейнер один.
 # В Kubernetes несколько реплик стартуют одновременно и конкурируют —
 # там миграции выносятся в Job или initContainer, а здесь отключаются
