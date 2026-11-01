@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from company.models import AbsenceReason, CompanySettings, Holiday
 from config.params import parse_date, parse_year
+from config.permissions import ADMIN_ONLY, ADMIN_WRITES, visible_employee_or_403
 from employees.models import Employee
 from schedule import approvals, calculations
 from schedule.models import (
@@ -56,15 +57,7 @@ class ValidationRuleViewSet(viewsets.ModelViewSet):
     serializer_class = ValidationRuleSerializer
     http_method_names = ["get", "patch", "head", "options"]
 
-    def get_permissions(self):
-        return super().get_permissions()
-
-    def update(self, request, *args, **kwargs):
-        if not request.user.is_admin:
-            return Response({"detail": "Только администратор"}, status=status.HTTP_403_FORBIDDEN)
-        return super().update(request, *args, **kwargs)
-
-    partial_update = update
+    permission_classes = ADMIN_WRITES
 
 
 class ScheduleEntryViewSet(viewsets.ModelViewSet):
@@ -197,12 +190,7 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
 
 class BalanceView(APIView):
     def get(self, request, employee_id):
-        visible = {str(i) for i in request.user.visible_employee_ids()}
-        if str(employee_id) not in visible:
-            return Response({"detail": "Нет доступа"}, status=status.HTTP_403_FORBIDDEN)
-        employee = Employee.objects.filter(id=employee_id).first()
-        if employee is None:
-            return Response({"detail": "Сотрудник не найден"}, status=status.HTTP_404_NOT_FOUND)
+        employee = visible_employee_or_403(request.user, employee_id)
         on_date = request.query_params.get("date")
         target = parse_date(on_date) if on_date else date.today()
         balance = calculations.balance_on(employee, target)
@@ -312,10 +300,7 @@ class AnnualSummaryView(APIView):
     """Показатели готовности графика — норма, непрерывность, расход накопленных."""
 
     def get(self, request, employee_id):
-        visible = {str(i) for i in request.user.visible_employee_ids()}
-        if str(employee_id) not in visible:
-            return Response({"detail": "Нет доступа"}, status=status.HTTP_403_FORBIDDEN)
-        employee = get_object_or_404(Employee, id=employee_id)
+        employee = visible_employee_or_403(request.user, employee_id)
         year = _year_param(request)
 
         summary = calculations.annual_summary(employee, year)
@@ -380,6 +365,8 @@ def _settings_payload(row):
 
 
 class CompanySettingsView(APIView):
+    permission_classes = ADMIN_WRITES
+
     """Глобальные настройки расчётов. Читают все, меняет администратор.
 
     Изменение действует сразу и на всех: баланс не хранится, а считается,
@@ -391,9 +378,6 @@ class CompanySettingsView(APIView):
         return Response(_settings_payload(CompanySettings.get_solo()))
 
     def patch(self, request):
-        if not request.user.is_admin:
-            return Response({"detail": "Только администратор"},
-                            status=status.HTTP_403_FORBIDDEN)
         row = CompanySettings.get_solo()
         errors = {}
         for field, (low, high) in SETTINGS_LIMITS.items():
@@ -438,6 +422,8 @@ def contrast_ratio(first, second):
 class BrandingView(APIView):
     """Оформление под компанию. Читают все, меняет администратор."""
 
+    permission_classes = ADMIN_WRITES
+
     def get(self, request):
         row = CompanySettings.get_solo()
         return Response({
@@ -450,9 +436,6 @@ class BrandingView(APIView):
         })
 
     def patch(self, request):
-        if not request.user.is_admin:
-            return Response({"detail": "Только администратор"},
-                            status=status.HTTP_403_FORBIDDEN)
         row = CompanySettings.get_solo()
         allowed = ["organization_name", "brand_primary_color", "brand_contrast_color",
                    "brand_radius", "brand_font_family"]
@@ -529,11 +512,9 @@ class RvdAdminViewSet(viewsets.ModelViewSet):
     serializer_class = RvdSerializer
 
     def get_permissions(self):
-        from audit.drf import RecordAuditActor
-        from company.views import IsAdmin
         if self.action in ("list", "retrieve"):
             return super().get_permissions()
-        return [RecordAuditActor(), IsAdmin()]
+        return [permission() for permission in ADMIN_ONLY]
 
     def get_queryset(self):
         queryset = ScheduleEntry.objects.filter(
@@ -582,11 +563,6 @@ class RvdAdminViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], url_path="bulk")
     def bulk(self, request):
         """Ввод РВД сразу по нескольким сотрудникам за месяц."""
-        from company.views import IsAdmin
-        if not IsAdmin().has_permission(request, self):
-            return Response({"detail": "Только администратор"},
-                            status=status.HTTP_403_FORBIDDEN)
-
         rows = request.data.get("rows")
         if not isinstance(rows, list) or not rows:
             return Response({"detail": "Не передан список записей"},
@@ -614,10 +590,7 @@ class RvdAdminViewSet(viewsets.ModelViewSet):
 
 class TimeOffBalanceView(APIView):
     def get(self, request, employee_id):
-        visible = {str(i) for i in request.user.visible_employee_ids()}
-        if str(employee_id) not in visible:
-            return Response({"detail": "Нет доступа"}, status=status.HTTP_403_FORBIDDEN)
-        employee = get_object_or_404(Employee, id=employee_id)
+        employee = visible_employee_or_403(request.user, employee_id)
 
         summary = calculations.time_off_summary(employee)
         # Отгулы на согласовании часы ещё не списали, но новый отгул под них
@@ -765,11 +738,9 @@ class AbsenceReasonViewSet(viewsets.ModelViewSet):
     queryset = AbsenceReason.objects.all().order_by("name")
 
     def get_permissions(self):
-        from audit.drf import RecordAuditActor
-        from company.views import IsAdmin
         if self.action in ("list", "retrieve"):
             return super().get_permissions()
-        return [RecordAuditActor(), IsAdmin()]
+        return [permission() for permission in ADMIN_ONLY]
 
 
 class AbsenceViewSet(viewsets.ModelViewSet):
@@ -868,10 +839,7 @@ class AbsenceSummaryView(APIView):
     """Отдельный счётчик отсутствий, не влияющий на баланс отпуска."""
 
     def get(self, request, employee_id):
-        visible = {str(i) for i in request.user.visible_employee_ids()}
-        if str(employee_id) not in visible:
-            return Response({"detail": "Нет доступа"}, status=status.HTTP_403_FORBIDDEN)
-        employee = get_object_or_404(Employee, id=employee_id)
+        employee = visible_employee_or_403(request.user, employee_id)
         year = _year_param(request)
         return Response(calculations.absence_summary(employee, year))
 
@@ -884,15 +852,9 @@ class RvdTrackingOverridesView(APIView):
     снять исключение; null — «как выше по структуре».
     """
 
-    def _deny(self, request):
-        if not request.user.is_admin:
-            return Response({"detail": "Только администратор"}, status=status.HTTP_403_FORBIDDEN)
-        return None
+    permission_classes = ADMIN_ONLY
 
     def get(self, request):
-        denied = self._deny(request)
-        if denied:
-            return denied
         from employees.models import OrgUnit
 
         def path(unit):
@@ -917,9 +879,6 @@ class RvdTrackingOverridesView(APIView):
         })
 
     def post(self, request):
-        denied = self._deny(request)
-        if denied:
-            return denied
         from employees.models import OrgUnit
 
         kind, value = request.data.get("kind"), request.data.get("value")

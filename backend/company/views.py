@@ -5,22 +5,13 @@ import binascii
 
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 
-from audit.drf import RecordAuditActor
 from company.importers import import_holidays
 from company.models import Holiday
 from config.params import parse_year
+from config.permissions import ADMIN_ONLY
 from schedule.models import ScheduleEntry
-
-
-class IsAdmin(BasePermission):
-    message = "Управлять календарём может только администратор"
-
-    def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated
-                    and request.user.is_admin)
 
 
 class HolidaySerializer(serializers.ModelSerializer):
@@ -44,7 +35,7 @@ class HolidayAdminViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ("list", "retrieve", "years"):
             return super().get_permissions()
-        return [RecordAuditActor(), IsAdmin()]
+        return [permission() for permission in ADMIN_ONLY]
 
     def get_queryset(self):
         queryset = Holiday.objects.all()

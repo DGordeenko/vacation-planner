@@ -8,12 +8,12 @@ from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.authtoken.models import Token
-from rest_framework.permissions import AllowAny, BasePermission
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
-from audit.drf import RecordAuditActor
+from config.permissions import ADMIN_ONLY
 from employees.importers import import_employees
 from employees.models import Employee
 
@@ -127,14 +127,6 @@ class AuthMeView(APIView):
         })
 
 
-class IsCompanyAdmin(BasePermission):
-    message = "Загружать сотрудников может только администратор"
-
-    def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated
-                    and request.user.is_admin)
-
-
 class EmployeeImportView(APIView):
     """Загрузка кадровой выгрузки из CSV (ФЗ 4.2.1, UX 2.5).
 
@@ -143,7 +135,7 @@ class EmployeeImportView(APIView):
     Загрузка применяется целиком или не применяется вовсе.
     """
 
-    permission_classes = [RecordAuditActor, IsCompanyAdmin]
+    permission_classes = ADMIN_ONLY
 
     def post(self, request):
         content = request.data.get("content")
@@ -190,7 +182,7 @@ class InvitationListView(APIView):
     Приглашения уволенных не выдаются.
     """
 
-    permission_classes = [RecordAuditActor, IsCompanyAdmin]
+    permission_classes = ADMIN_ONLY
 
     def get(self, request):
         employees = (Employee.objects
@@ -206,7 +198,7 @@ class InvitationReissueView(APIView):
     перевыпуск для уже вошедшего сотрудника — это сброс пароля по ссылке.
     """
 
-    permission_classes = [RecordAuditActor, IsCompanyAdmin]
+    permission_classes = ADMIN_ONLY
 
     def post(self, request, employee_id):
         employee = get_object_or_404(Employee, id=employee_id,
