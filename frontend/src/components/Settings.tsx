@@ -1,26 +1,10 @@
 import { useEffect, useState } from "react";
-import { ApiError, settingsApi, tagsApi } from "../api";
+import { settingsApi } from "../api";
+import { errorText, fieldErrors } from "../text";
+import EmployeePicker from "./EmployeePicker";
 import type {
-  Branding, CompanySettingsRow, EmployeeBrief, RvdTrackingOverrides, ValidationRuleRow,
+  Branding, CompanySettingsRow, RvdTrackingOverrides, ValidationRuleRow,
 } from "../types";
-
-/** Ошибки полей из ответа сервера: и вида {errors: {...}}, и DRF {field: [...]}. */
-function fieldErrors(err: unknown): Record<string, string> {
-  if (!(err instanceof ApiError)) return {};
-  const body = (err.payload ?? {}) as Record<string, unknown>;
-  const source = (body.errors ?? body) as Record<string, unknown>;
-  const result: Record<string, string> = {};
-  Object.entries(source).forEach(([key, value]) => {
-    if (Array.isArray(value)) result[key] = value.join(" ");
-  });
-  return result;
-}
-
-function message(err: unknown) {
-  const fields = Object.values(fieldErrors(err));
-  if (fields.length) return fields.join(" ");
-  return err instanceof Error ? err.message : "Не удалось сохранить";
-}
 
 /** Настройки (релиз 1.2): нормы и расчёты, правила проверки, оформление.
     Всё, что меняет расчёты, проверяет и применяет сервер — здесь только ввод. */
@@ -76,7 +60,7 @@ function CompanySection() {
   }
 
   useEffect(() => {
-    settingsApi.get().then(fill).catch((err) => setStatus(message(err)));
+    settingsApi.get().then(fill).catch((err) => setStatus(errorText(err)));
   }, []);
 
   if (!saved) return <section className="vs-card">{status ?? "Загружаем…"}</section>;
@@ -99,7 +83,7 @@ function CompanySection() {
       setStatus("Сохранено");
     } catch (err) {
       setErrors(fieldErrors(err));
-      if (!Object.keys(fieldErrors(err)).length) setStatus(message(err));
+      if (!Object.keys(fieldErrors(err)).length) setStatus(errorText(err));
     } finally {
       setBusy(false);
     }
@@ -144,7 +128,7 @@ function RulesSection() {
 
   useEffect(() => {
     settingsApi.rules().then((page) => setRules(page.results))
-      .catch((err) => setError(message(err)));
+      .catch((err) => setError(errorText(err)));
   }, []);
 
   function replace(row: ValidationRuleRow) {
@@ -185,7 +169,7 @@ function RuleLine({ rule, onSaved }: {
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1500);
     } catch (err) {
-      setError(message(err));
+      setError(errorText(err));
       setValue(rule.threshold_value === null ? "" : String(Number(rule.threshold_value)));
     }
   }
@@ -240,7 +224,7 @@ function BrandingSection({ branding, onChanged }: { branding: Branding; onChange
       onChanged();
     } catch (err) {
       setErrors(fieldErrors(err));
-      if (!Object.keys(fieldErrors(err)).length) setStatus(message(err));
+      if (!Object.keys(fieldErrors(err)).length) setStatus(errorText(err));
     } finally {
       setBusy(false);
     }
@@ -295,27 +279,17 @@ function RvdTrackingSection() {
   const [data, setData] = useState<RvdTrackingOverrides | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [unitId, setUnitId] = useState("");
-  const [query, setQuery] = useState("");
-  const [found, setFound] = useState<EmployeeBrief[]>([]);
 
   useEffect(() => {
-    settingsApi.rvdTracking().then(setData).catch((err) => setError(message(err)));
+    settingsApi.rvdTracking().then(setData).catch((err) => setError(errorText(err)));
   }, []);
-
-  useEffect(() => {
-    if (query.trim().length < 2) { setFound([]); return; }
-    const timer = window.setTimeout(() => {
-      tagsApi.searchEmployees(query.trim()).then(setFound).catch(() => setFound([]));
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [query]);
 
   async function set(kind: "unit" | "employee", id: string, value: boolean | null) {
     setError(null);
     try {
       setData(await settingsApi.setRvdTracking(kind, id, value));
     } catch (err) {
-      setError(message(err));
+      setError(errorText(err));
     }
   }
 
@@ -372,24 +346,8 @@ function RvdTrackingSection() {
           onClick={() => { void set("unit", unitId, !data.company); setUnitId(""); }}>
           {data.company ? "Не учитывать" : "Учитывать"}
         </button>
-        <div className="vs-field vs-audit-person">
-          Добавить сотрудника
-          <input value={query} placeholder="ФИО или табельный" onChange={(e) => setQuery(e.target.value)} />
-          {found.length > 0 && (
-            <ul className="vs-list vs-found vs-audit-found">
-              {found.slice(0, 8).map((e) => (
-                <li key={e.id}>
-                  <button className="vs-item vs-found-item" onClick={() => {
-                    void set("employee", e.id, !data.company); setQuery(""); setFound([]);
-                  }}>
-                    <span>{e.full_name}</span>
-                    <span className="vs-muted vs-small">{e.org_unit ?? ""}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <EmployeePicker label={`Сотрудник — «${data.company ? "не учитывать" : "учитывать"}»`}
+          onSelect={(e) => { if (e) void set("employee", e.id, !data.company); }} />
       </div>
     </section>
   );

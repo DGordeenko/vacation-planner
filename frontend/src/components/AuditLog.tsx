@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { auditApi, tagsApi, type AuditFilter } from "../api";
+import { auditApi, type AuditFilter } from "../api";
+import EmployeePicker from "./EmployeePicker";
 import type { AuditChange, AuditEntityType, AuditRow, EmployeeBrief } from "../types";
 
 const PAGE_SIZE = 50;
@@ -35,8 +36,6 @@ export default function AuditLog({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [person, setPerson] = useState<EmployeeBrief | null>(null);
-  const [query, setQuery] = useState("");
-  const [found, setFound] = useState<EmployeeBrief[]>([]);
 
   useEffect(() => { auditApi.entityTypes().then(setTypes).catch(() => setTypes([])); }, []);
 
@@ -48,14 +47,6 @@ export default function AuditLog({ onBack }: { onBack: () => void }) {
       .catch((err) => alive && setError(err instanceof Error ? err.message : "Не удалось загрузить"));
     return () => { alive = false; };
   }, [filter, person, page]);
-
-  useEffect(() => {
-    if (query.trim().length < 2) { setFound([]); return; }
-    const timer = window.setTimeout(() => {
-      tagsApi.searchEmployees(query.trim()).then(setFound).catch(() => setFound([]));
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [query]);
 
   function update(patch: AuditFilter) {
     setFilter((f) => ({ ...f, ...patch }));
@@ -100,35 +91,8 @@ export default function AuditLog({ onBack }: { onBack: () => void }) {
           <input type="date" value={filter.until ?? ""}
             onChange={(e) => update({ until: e.target.value || undefined })} />
         </label>
-        <div className="vs-field vs-inline-field vs-audit-person">
-          Чей объект
-          {person ? (
-            <span className="vs-chip-picked">
-              {person.full_name}
-              <button className="vs-link" aria-label="Сбросить сотрудника"
-                onClick={() => { setPerson(null); setPage(1); }}>✕</button>
-            </span>
-          ) : (
-            <>
-              <input value={query} placeholder="ФИО или табельный"
-                onChange={(e) => setQuery(e.target.value)} />
-              {found.length > 0 && (
-                <ul className="vs-list vs-found vs-audit-found">
-                  {found.slice(0, 8).map((e) => (
-                    <li key={e.id}>
-                      <button className="vs-item vs-found-item" onClick={() => {
-                        setPerson(e); setQuery(""); setFound([]); setPage(1);
-                      }}>
-                        <span>{e.full_name}</span>
-                        <span className="vs-muted vs-small">{e.org_unit ?? ""}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
-          )}
-        </div>
+        <EmployeePicker label="Чей объект" selected={person}
+          onSelect={(e) => { setPerson(e); setPage(1); }} />
       </div>
 
       {error && <div className="vs-error vs-error-inline">{error}</div>}

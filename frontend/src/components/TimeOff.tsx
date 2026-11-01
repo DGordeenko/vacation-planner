@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { plural } from "../text";
 import { timeOffApi, type AbsenceInput } from "../api";
 import { fmt, todayIso } from "../dates";
 import type {
@@ -12,13 +13,6 @@ const DAY_OFF_STATUS: Record<string, { label: string; kind: string }> = {
   cancelled: { label: "отменён", kind: "bad" },
   draft: { label: "черновик", kind: "pending" },
 };
-
-function plural(n: number, one: string, few: string, many: string) {
-  const mod10 = n % 10, mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
-}
 
 function hours(value: number) {
   return `${Number.isInteger(value) ? value : value.toFixed(1).replace(".", ",")} ч`;
