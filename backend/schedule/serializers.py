@@ -231,3 +231,58 @@ class AbsenceSerializer(serializers.ModelSerializer):
     def get_days(self, obj):
         from schedule.calculations import absence_days
         return absence_days(obj.date_from, obj.effective_date_to)
+
+
+class OvertimeInputSerializer(serializers.Serializer):
+    """Ввод сверхурочных. Часы считает сервер из периода работы."""
+
+    employee = serializers.PrimaryKeyRelatedField(
+        queryset=Employee.objects.filter(status=Employee.Status.ACTIVE), required=False)
+    date = serializers.DateField(error_messages={"invalid": "Дата в формате ГГГГ-ММ-ДД"})
+    time_from = serializers.TimeField(format="%H:%M",
+                                      error_messages={"invalid": "Время в формате ЧЧ:ММ"})
+    time_to = serializers.TimeField(format="%H:%M",
+                                    error_messages={"invalid": "Время в формате ЧЧ:ММ"})
+    task_link = TaskLinkField(required=True, allow_blank=False, error_messages={
+        "required": "Укажите ссылку на задачу", "blank": "Укажите ссылку на задачу"})
+    compensation = serializers.ChoiceField(
+        choices=ScheduleEntry.OvertimeCompensation.choices,
+        error_messages={"invalid_choice": "Выберите: оплата или отгул"})
+
+
+class OvertimeCheckSerializer(OvertimeInputSerializer):
+    """Предпросмотр по дате и периоду: ссылку и компенсацию ещё могли не заполнить."""
+
+    task_link = TaskLinkField()
+    compensation = serializers.ChoiceField(
+        choices=ScheduleEntry.OvertimeCompensation.choices, required=False)
+
+
+class OvertimeSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source="employee.full_name", read_only=True)
+    employee_number = serializers.CharField(source="employee.employee_number", read_only=True)
+    org_unit = serializers.SerializerMethodField()
+    date = serializers.DateField(source="date_from")
+    time_from = serializers.TimeField(source="work_time_from", format="%H:%M")
+    time_to = serializers.TimeField(source="work_time_to", format="%H:%M")
+    hours = serializers.FloatField(source="overtime_hours")
+    compensation = serializers.CharField(source="overtime_compensation")
+    compensation_display = serializers.CharField(source="get_overtime_compensation_display")
+    created_by_name = serializers.CharField(source="created_by.full_name")
+    waiting_for = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ScheduleEntry
+        fields = ["id", "employee", "employee_name", "employee_number", "org_unit", "date",
+                  "time_from", "time_to", "hours", "task_link", "compensation",
+                  "compensation_display", "status", "waiting_for", "rejection_comment",
+                  "created_by", "created_by_name", "created_at"]
+        read_only_fields = fields
+
+    def get_org_unit(self, obj):
+        return obj.employee.org_unit.name if obj.employee.org_unit else None
+
+    def get_waiting_for(self, obj):
+        from schedule.overtime import current_approver
+        approver = current_approver(obj)
+        return approver.full_name if approver else None

@@ -56,6 +56,10 @@ class ScheduleEntry(models.Model):
         DOUBLE_PAY = "double_pay", "Двойная оплата"
         PAY_PLUS_DAY_OFF = "pay_plus_day_off", "Оплата + отгул"
 
+    class OvertimeCompensation(models.TextChoices):
+        PAY = "pay", "Оплата по законодательству"
+        DAY_OFF = "day_off", "Отгул"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(
         Employee, on_delete=models.CASCADE, related_name="schedule_entries"
@@ -81,6 +85,14 @@ class ScheduleEntry(models.Model):
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text="Отработано часов в выходной день. Может быть меньше полного дня."
     )
+    # Сверхурочные: период работы, вид компенсации и шаг согласования.
+    work_time_from = models.TimeField(null=True, blank=True)
+    work_time_to = models.TimeField(null=True, blank=True)
+    overtime_compensation = models.CharField(
+        max_length=16, choices=OvertimeCompensation.choices, blank=True)
+    approval_stage = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Сверхурочные: сколько уровней цепочки уже согласовали.")
     extended_by_holiday_days = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.DRAFT)
     created_by = models.ForeignKey(
@@ -275,6 +287,7 @@ class TimeOffLedger(models.Model):
 
     class Reason(models.TextChoices):
         RVD_EARNED = "rvd_earned", "Начислено за работу в выходной"
+        OVERTIME_EARNED = "overtime_earned", "Начислено за сверхурочную работу"
         DAY_OFF_TAKEN = "day_off_taken", "Списано за отгул"
         MANUAL_ADJUSTMENT = "manual_adjustment", "Ручная корректировка"
         INITIAL_MIGRATION = "initial_migration", "Начальный остаток"

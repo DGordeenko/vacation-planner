@@ -729,3 +729,8 @@ body {
 .vs-field input[type="date"] { min-height: 36px; -webkit-appearance: none; appearance: none; }
 .vs-override-pick { min-width: 0; max-width: 100%; }
 .vs-override-pick select { width: 100%; min-width: 0; }  /* длинные пути подразделений не растягивают карточку */
+.vs-section-head { display: flex; gap: 16px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
+/* Сверхурочные: форма узкой колонкой, список шире; отчёт к оплате — на всю ширину. */
+.vs-overtime { grid-template-columns: minmax(340px, 440px) minmax(0, 1fr); }
+.vs-overtime > .vs-overtime-report { grid-column: 1 / -1; }
+@media (max-width: 940px) { .vs-overtime { grid-template-columns: minmax(0, 1fr); } }

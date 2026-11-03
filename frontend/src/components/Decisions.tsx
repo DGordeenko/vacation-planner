@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { managerApi } from "../api";
+import { managerApi, overtimeApi } from "../api";
 import { fmt, weekdayName } from "../dates";
+import { hours } from "./Overtime";
 import type {
-  ApprovalDecision, DayOffDecision, Decisions as DecisionsData, ExceptionDecision,
+  ApprovalDecision, DayOffDecision, Decisions as DecisionsData, ExceptionDecision, Overtime,
 } from "../types";
 
 /** «Требует моего решения»: графики на согласовании и запросы исключений.
@@ -71,6 +72,16 @@ export default function Decisions({ onBack, onChanged }: {
               </h2>
               {data.day_offs.map((item) => (
                 <DayOffCard key={item.id} item={item} onDone={afterDecision} />
+              ))}
+            </section>
+          )}
+          {data.overtime.length > 0 && (
+            <section>
+              <h2 className="vs-section-title">
+                Сверхурочные <span className="vs-muted">{data.overtime.length}</span>
+              </h2>
+              {data.overtime.map((item) => (
+                <OvertimeCard key={item.id} item={item} onDone={afterDecision} />
               ))}
             </section>
           )}
@@ -291,6 +302,50 @@ function DayOffCard({ item, onDone }: {
       <div className="vs-muted vs-small">
         На счёте {item.balance.hours} ч — хватает на {item.balance.available_days} дн.
         Часы спишутся после согласования.
+      </div>
+      <DecisionFoot busy={busy} comment={comment} setComment={setComment}
+        commentHint="Необязателен при согласовании, обязателен при отказе"
+        approveLabel="Согласовать" rejectLabel="Отклонить" requireCommentToApprove={false}
+        onApprove={() => decide(true)} onReject={() => decide(false)} error={error} />
+    </article>
+  );
+}
+
+function OvertimeCard({ item, onDone }: {
+  item: Overtime;
+  onDone: (message: string) => void;
+}) {
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function decide(approve: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = approve
+        ? await overtimeApi.approve(item.id) : await overtimeApi.reject(item.id, comment);
+      onDone(`${item.employee_name}: сверхурочные ${fmt(item.date)} `
+        + (!approve ? "отклонены." : result.status === "approved" ? "согласованы."
+          : `согласованы вами, дальше решает ${result.waiting_for}.`));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сохранить решение");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className="vs-card vs-decision">
+      <header className="vs-decision-head">
+        <strong>{item.employee_name}</strong>
+        <span className="vs-muted">
+          {fmt(item.date)}, {weekdayName(item.date)}, {item.time_from}–{item.time_to} ({hours(item.hours)})
+        </span>
+      </header>
+      <div className="vs-muted vs-small">
+        {item.compensation_display} ·{" "}
+        <a href={item.task_link} target="_blank" rel="noreferrer">задача</a>
+        {item.created_by_name !== item.employee_name && ` · внёс ${item.created_by_name}`}
       </div>
       <DecisionFoot busy={busy} comment={comment} setComment={setComment}
         commentHint="Необязателен при согласовании, обязателен при отказе"

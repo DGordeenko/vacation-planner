@@ -175,7 +175,7 @@ class DemoContractTests(TestCase):
 
 
 # types.ts: Decisions, ApprovalDecision, ExceptionDecision, TeamEntry
-DECISIONS_FIELDS = {"count", "approvals", "exceptions", "day_offs"}
+DECISIONS_FIELDS = {"count", "approvals", "exceptions", "day_offs", "overtime"}
 APPROVAL_DECISION_FIELDS = {"approval_id", "step_id", "employee_id", "employee_name", "year",
                             "scope", "submitted_at", "planned_days", "entries", "steps"}
 TEAM_ENTRY_FIELDS = {"id", "record_type", "date_from", "date_to", "status", "vacation_days"}
@@ -333,7 +333,8 @@ class AuditContractTests(TestCase):
 # types.ts: CompanySettingsRow, ValidationRuleRow
 COMPANY_SETTINGS_FIELDS = {"annual_vacation_norm_days", "monthly_accrual_rate",
                            "approval_levels", "workday_hours",
-                           "rvd_compensation_tracking_enabled"}
+                           "rvd_compensation_tracking_enabled", "overtime_limits_enabled",
+                           "overtime_limit_two_days_hours", "overtime_limit_year_hours"}
 VALIDATION_RULE_FIELDS = {"code", "name", "description", "is_enabled", "threshold_value",
                           "approver_level"}
 
@@ -440,3 +441,34 @@ class VacationNormContractTests(TestCase):
         self.assertEqual({"company_norm", "employees"}, set(body))
         self.assertEqual({"id", "name", "org_unit", "norm", "monthly_rate"},
                          set(body["employees"][0]))
+
+
+# types.ts: Overtime, OvertimeCheck, OvertimeReportRow
+OVERTIME_FIELDS = {"id", "employee", "employee_name", "employee_number", "org_unit", "date",
+                   "time_from", "time_to", "hours", "task_link", "compensation",
+                   "compensation_display", "status", "waiting_for", "rejection_comment",
+                   "created_by", "created_by_name", "created_at"}
+
+
+class OvertimeContractTests(TestCase):
+    def test_overtime_contract(self):
+        from datetime import timedelta
+        CompanySettings.get_solo()
+        admin = Employee.objects.create_user(
+            email="a@o.ru", employee_number="1", full_name="А", hire_date=date(2015, 1, 1),
+            is_admin=True)
+        client = APIClient()
+        client.force_authenticate(admin)
+        day = (date.today() - timedelta(days=2)).isoformat()
+        payload = {"date": day, "time_from": "18:00", "time_to": "20:00",
+                   "task_link": "https://t/1", "compensation": "pay"}
+        self.assertEqual({"hours", "errors", "warnings"},
+                         set(client.post("/api/v1/overtime/validate/", payload,
+                                         format="json").json()))
+        created = client.post("/api/v1/overtime/", payload, format="json").json()
+        self.assertEqual(OVERTIME_FIELDS | {"warnings"}, set(created))
+        self.assertEqual(OVERTIME_FIELDS,
+                         set(client.get("/api/v1/overtime/").json()["results"][0]))
+        report = client.get(f"/api/v1/overtime/report/?year={day[:4]}").json()
+        self.assertEqual({"full_name", "employee_number", "date", "day_type", "period"},
+                         set(report[0]))

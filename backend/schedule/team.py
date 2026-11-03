@@ -121,17 +121,23 @@ def day_offs_awaiting(user):
 
 
 class DecisionsView(APIView):
-    """«Требует моего решения»: графики на согласовании, запросы исключений, отгулы."""
+    """«Требует моего решения»: графики, исключения, отгулы, сверхурочные."""
 
     def get(self, request):
+        from schedule.overtime import awaiting as overtime_awaiting
+        from schedule.serializers import OvertimeSerializer
+
         approvals_list = approvals_awaiting(request.user)
         exceptions_list = exceptions_awaiting(request.user)
         day_offs = day_offs_awaiting(request.user)
+        overtime = OvertimeSerializer(overtime_awaiting(request.user), many=True).data
         return Response({
-            "count": len(approvals_list) + len(exceptions_list) + len(day_offs),
+            "count": len(approvals_list) + len(exceptions_list) + len(day_offs)
+            + len(overtime),
             "approvals": approvals_list,
             "exceptions": exceptions_list,
             "day_offs": day_offs,
+            "overtime": overtime,
         })
 
 

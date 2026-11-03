@@ -61,6 +61,14 @@ class CompanySettings(models.Model):
     workday_hours = models.DecimalField(
         max_digits=4, decimal_places=2, default=8,
         help_text="Длина рабочего дня. Столько часов списывает один отгул.")
+    # Пределы сверхурочной работы (ТК РФ, ст. 99): 4 часа за два дня подряд
+    # и 120 часов в год. Контроль по умолчанию выключен; при превышении —
+    # предупреждение, а не запрет: решение остаётся за руководителем.
+    overtime_limits_enabled = models.BooleanField(default=False)
+    overtime_limit_two_days_hours = models.DecimalField(
+        max_digits=5, decimal_places=2, default=4)
+    overtime_limit_year_hours = models.DecimalField(
+        max_digits=6, decimal_places=2, default=120)
 
     organization_name = models.CharField(max_length=255, default="Организация")
     brand_primary_color = models.CharField(max_length=9, default="#2F6FEB")
