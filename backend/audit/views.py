@@ -109,9 +109,9 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = AuditLog.objects.all().select_related(
             "changed_by", "subject_employee")
 
-        # Администратор видит всё; руководитель — изменения по своим людям
+        # Администратор и HR видят всё; руководитель — изменения по своим людям
         # и свои собственные действия; рядовой сотрудник — только по себе.
-        if not user.is_admin:
+        if not (user.is_admin or user.is_hr):
             visible = user.visible_employee_ids()
             queryset = queryset.filter(
                 Q(subject_employee_id__in=visible) | Q(changed_by=user))

@@ -6,7 +6,10 @@ import EmployeePicker from "./EmployeePicker";
 /** Справочник тегов: лимиты одновременного отсутствия и ручное назначение.
     Администратор меняет справочник и лимиты; руководитель назначает и снимает
     дополнительные теги сотрудникам своей структуры. Сотрудник сюда не попадает. */
-export default function TagsAdmin({ onBack, canEdit }: { onBack: () => void; canEdit: boolean }) {
+/** canAssign — назначать теги своей структуре (руководитель); HR-администратор только смотрит. */
+export default function TagsAdmin({ onBack, canEdit, canAssign = true }: {
+  onBack: () => void; canEdit: boolean; canAssign?: boolean;
+}) {
   const [tags, setTags] = useState<TagRow[]>([]);
   const [filter, setFilter] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -97,6 +100,7 @@ export default function TagsAdmin({ onBack, canEdit }: { onBack: () => void; can
         </div>
         {visible.map((tag) => (
           <TagLine key={tag.id} tag={tag} open={openId === tag.id} canEdit={canEdit}
+            canAssign={canAssign}
             onToggle={() => setOpenId(openId === tag.id ? null : tag.id)}
             onChanged={reload} onError={setError} />
         ))}
@@ -113,10 +117,11 @@ function parseLimit(value: string): number | null {
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 
-function TagLine({ tag, open, canEdit, onToggle, onChanged, onError }: {
+function TagLine({ tag, open, canEdit, canAssign, onToggle, onChanged, onError }: {
   tag: TagRow;
   open: boolean;
   canEdit: boolean;
+  canAssign: boolean;
   onToggle: () => void;
   onChanged: () => void;
   onError: (message: string) => void;
@@ -165,14 +170,15 @@ function TagLine({ tag, open, canEdit, onToggle, onChanged, onError }: {
           </>}
         </span>
       </div>
-      {open && <TagMembers tag={tag} canEdit={canEdit} onChanged={onChanged} onError={onError} />}
+      {open && <TagMembers tag={tag} canEdit={canEdit} canAssign={canAssign} onChanged={onChanged} onError={onError} />}
     </div>
   );
 }
 
-function TagMembers({ tag, canEdit, onChanged, onError }: {
+function TagMembers({ tag, canEdit, canAssign, onChanged, onError }: {
   tag: TagRow;
   canEdit: boolean;
+  canAssign: boolean;
   onChanged: () => void;
   onError: (message: string) => void;
 }) {
@@ -219,7 +225,7 @@ function TagMembers({ tag, canEdit, onChanged, onError }: {
                 {member.org_unit ?? ""}{member.source === "auto_org" ? " · по подразделению"
                   : member.assigned_by ? ` · назначил ${member.assigned_by}` : " · вручную"}
               </span>
-              {member.source === "manual" && (
+              {canAssign && member.source === "manual" && (
                 <button className="vs-x" onClick={() => unassign(member)}
                   aria-label={`Снять тег с ${member.full_name}`}>✕</button>
               )}
@@ -228,11 +234,11 @@ function TagMembers({ tag, canEdit, onChanged, onError }: {
           {members.length === 0 && <li className="vs-muted vs-small">Пока никого.</li>}
         </ul>
       )}
-      {!canEdit && (
+      {!canEdit && canAssign && (
         <p className="vs-muted vs-small">Показаны сотрудники вашей структуры.</p>
       )}
-      <EmployeePicker label="Добавить сотрудника" exclude={memberIds}
-        onSelect={(e) => { if (e) void assign(e); }} />
+      {canAssign && <EmployeePicker label="Добавить сотрудника" exclude={memberIds}
+        onSelect={(e) => { if (e) void assign(e); }} />}
     </div>
   );
 }

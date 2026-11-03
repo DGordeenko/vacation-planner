@@ -43,6 +43,7 @@ FIELD_LABELS = {
     "full_name": "ФИО",
     "hire_date": "Дата приёма",
     "is_admin": "Администратор",
+    "is_hr": "HR-администратор",
     "is_enabled": "Включено",
     "is_staff": "Доступ в админку Django",
     "level": "Уровень",

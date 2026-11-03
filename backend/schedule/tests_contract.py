@@ -16,7 +16,7 @@ from schedule.models import ScheduleEntry
 from schedule.tests import seed_rules
 
 ME_FIELDS = {"id", "full_name", "email", "employee_number", "hire_date",
-             "org_unit", "is_admin", "is_manager", "manager_name", "tags",
+             "org_unit", "is_admin", "is_hr", "is_manager", "manager_name", "tags",
              "email_notifications_enabled"}
 BRANDING_FIELDS = {"organization_name", "brand_primary_color", "brand_contrast_color",
                    "brand_radius", "brand_font_family", "brand_logo"}
