@@ -238,3 +238,59 @@ class TeamCalendarScopeTests(ApprovalBase):
         self.client.force_authenticate(self.employee)
         self.assertEqual(self.client.get(url.format(self.stranger_approved.id)).status_code,
                          403)
+
+
+class TeamCalendarUnitFilterTests(TeamCalendarScopeTests):
+    """Фильтр по подразделению: отдельно от тегов и вместе с ними."""
+
+    def test_units_offered_by_scope(self):
+        mine = {u["path"] for u in self.calendar(self.chief, 7)["units"]}
+        self.assertEqual(mine, {"Отдел Т", "Отдел Т / Группа Т"})
+        everyone = {u["path"] for u in self.calendar(self.chief, 7, scope="all")["units"]}
+        self.assertIn("Отдел Чужой", everyone)
+
+    def test_unit_includes_nested_groups(self):
+        body = self.calendar(self.chief, 7, unit_id=self.department.id)
+        self.assertIn("Иван Иванов", {r["full_name"] for r in body["rows"]})
+        self.assertEqual(body["unit"]["path"], "Отдел Т")
+
+    def test_group_excludes_parent_unit_staff(self):
+        body = self.calendar(self.chief, 7, unit_id=self.group.id)
+        names = {r["full_name"] for r in body["rows"]}
+        self.assertIn("Иван Иванов", names)
+        self.assertNotIn("Пётр Начальников", names)  # сам числится в отделе
+
+    def test_foreign_unit_needs_all_scope(self):
+        from employees.models import OrgUnit
+        other = OrgUnit.objects.get(name="Отдел Чужой")
+        self.client.force_authenticate(self.chief)
+        response = self.client.get("/api/v1/team-calendar/?date_from=2027-07-01"
+                                   f"&date_to=2027-07-28&unit_id={other.id}")
+        self.assertEqual(response.status_code, 404)
+        body = self.calendar(self.chief, 6, scope="all", unit_id=other.id)
+        self.assertEqual([r["full_name"] for r in body["rows"]],
+                         ["Олег Соседов", "Сергей Чужой"])
+        self.assertEqual(body["rows"][1]["entries"], [])  # чужой черновик скрыт и здесь
+
+    def test_unit_and_tag_intersect(self):
+        tag = Tag.objects.create(name="Сеть", max_simultaneous_absence=1)
+        EmployeeTag.objects.create(employee=self.stranger, tag=tag, source=Tag.Source.MANUAL)
+        EmployeeTag.objects.create(employee=self.employee, tag=tag, source=Tag.Source.MANUAL)
+        body = self.calendar(self.chief, 7, scope="all", unit_id=self.group.id, tag_id=tag.id)
+        self.assertEqual([r["full_name"] for r in body["rows"]], ["Иван Иванов"])
+        # Лимит общий для компании: чужой утверждённый отпуск (12–18 июля)
+        # исчерпывает его и для отфильтрованного подразделения.
+        self.assertEqual(body["limit_reached"][0]["date"], "2027-07-12")
+        self.assertEqual(len(body["limit_reached"]), 7)
+
+    def test_empty_unit_not_offered(self):
+        from employees.models import OrgUnit
+        OrgUnit.objects.create(name="Пустая группа", unit_type=OrgUnit.UnitType.GROUP,
+                               parent=self.department)
+        paths = {u["path"] for u in self.calendar(self.chief, 7)["units"]}
+        self.assertNotIn("Отдел Т / Пустая группа", paths)
+
+    def test_unknown_unit(self):
+        self.client.force_authenticate(self.chief)
+        response = self.client.get("/api/v1/team-calendar/?unit_id=не-uuid")
+        self.assertEqual(response.status_code, 404)

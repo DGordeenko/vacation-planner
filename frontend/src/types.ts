@@ -444,12 +444,18 @@ export interface TeamCalendarEntry extends TeamEntry {
 
 export type TeamScope = "mine" | "all";
 
+/** Путь от корня: «Отдел / Группа» — одноимённые группы различаются. */
+export interface TeamUnit { id: string; path: string }
+
 export interface TeamCalendar {
   date_from: string;
   date_to: string;
   scope: TeamScope;
   /** Руководитель может переключиться на график всех подразделений. */
   can_view_all: boolean;
+  /** Подразделения для фильтра — в пределах выбранного режима, только непустые. */
+  units: TeamUnit[];
+  unit: TeamUnit | null;
   tag: { id: string; name: string; limit: number | null } | null;
   limit_reached: { date: string; count: number }[];
   rows: {

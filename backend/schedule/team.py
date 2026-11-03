@@ -11,7 +11,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from employees.models import Employee, Tag
+from employees.models import Employee, OrgUnit, Tag
 from schedule import approvals, calculations
 from schedule.models import ApprovalStep, Notification, ScheduleApproval, ScheduleEntry
 from schedule.serializers import ApprovalStepSerializer, ViolationSerializer
@@ -223,6 +223,41 @@ def _calendar_scope(user, scope):
     return employees.filter(id__in=own), own
 
 
+def _unit_choices(user, own):
+    """Подразделения для фильтра: вся компания или своя структура.
+
+    Путь от корня нужен, чтобы различать одноимённые группы разных отделов.
+    Пустые подразделения не предлагаются — выбрать их бессмысленно.
+    """
+    units = {u.id: u for u in OrgUnit.objects.all()}
+
+    def path(unit):
+        names = []
+        while unit is not None:
+            names.append(unit.name)
+            unit = units.get(unit.parent_id)
+        return " / ".join(reversed(names))
+
+    if own is None:
+        allowed = set(units)
+    else:
+        allowed = set()
+        for unit in user.managed_units.all():
+            allowed |= unit.descendant_ids()
+    staffed = set(Employee.objects.filter(status=Employee.Status.ACTIVE)
+                  .values_list("org_unit_id", flat=True))
+    # Подразделение с людьми только во вложенных группах тоже годится.
+    with_people = set()
+    for unit_id in staffed:
+        unit = units.get(unit_id)
+        while unit is not None and unit.id not in with_people:
+            with_people.add(unit.id)
+            unit = units.get(unit.parent_id)
+    return sorted(({"id": str(u.id), "path": path(u)}
+                   for uid, u in units.items() if uid in allowed and uid in with_people),
+                  key=lambda row: row["path"])
+
+
 def _entry_visible(entry, own):
     return own is None or entry.employee_id in own or entry.status in ACTIVE_STATUSES
 
@@ -256,6 +291,19 @@ class TeamCalendarView(APIView):
         scope = "all" if request.query_params.get("scope") == "all" else "mine"
         employees, own = _calendar_scope(user, scope)
 
+        # В «моей структуре» выбор ограничен своими подразделениями, в режиме
+        # «все подразделения» — любые: видимость записей и так решает own.
+        units = _unit_choices(user, None if scope == "all" or own is None else own)
+        unit = None
+        unit_id = request.query_params.get("unit_id")
+        if unit_id:
+            if unit_id not in {row["id"] for row in units}:
+                return Response({"detail": "Подразделение недоступно в этом режиме",
+                                 "code": "unit_out_of_scope"},
+                                status=status.HTTP_404_NOT_FOUND)
+            unit = OrgUnit.objects.get(id=unit_id)
+            employees = employees.filter(org_unit_id__in=unit.descendant_ids())
+
         tag = None
         tag_id = request.query_params.get("tag_id")
         if tag_id:
@@ -280,6 +328,8 @@ class TeamCalendarView(APIView):
             "date_to": date_to,
             "scope": "all" if own is None else scope,
             "can_view_all": own is not None,
+            "units": units,
+            "unit": next((row for row in units if unit and row["id"] == str(unit.id)), None),
             "tag": ({"id": str(tag.id), "name": tag.name,
                      "limit": tag.max_simultaneous_absence} if tag else None),
             "limit_reached": _limit_reached_days(tag, date_from, date_to) if tag else [],

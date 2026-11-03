@@ -455,6 +455,7 @@ body {
 /* --- Календарь команды --- */
 
 .vs-team-controls { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px; }
+.vs-team-controls select { max-width: min(360px, 100%); text-overflow: ellipsis; }
 .vs-month-switch { display: flex; gap: 10px; align-items: center; }
 .vs-month-switch strong { min-width: 130px; text-align: center; }
 .vs-inline-field { min-width: 220px; }
