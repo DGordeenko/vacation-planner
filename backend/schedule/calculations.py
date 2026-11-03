@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
+from company import history
 from company.models import CompanySettings, Holiday
 from employees.models import Employee
 from schedule.models import ScheduleEntry, VacationLedger, ValidationRule
@@ -74,8 +75,8 @@ def accrual_for_month(employee: Employee, year: int, month: int, rate: Decimal,
     return portion.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def accrued_total(employee: Employee, until: date, rate: Decimal,
-                  start_date: date = None) -> Decimal:
+def accrued_total(employee: Employee, until: date, rate: Decimal = None,
+                  start_date: date = None, rates=None) -> Decimal:
     """Сумма начислений с даты начала начисления по указанную дату включительно.
 
     Дата начала — дата приёма либо день после начального остатка
@@ -85,8 +86,12 @@ def accrued_total(employee: Employee, until: date, rate: Decimal,
     start_date = start_date or employee.hire_date
     total = Decimal("0.00")
     year, month = start_date.year, start_date.month
+    # Ставка — на каждый месяц своя: настройки версионируются во времени.
+    rates = rates or (None if rate is not None else history.EmployeeRates(employee))
 
     while date(year, month, 1) <= until:
+        if rates is not None:
+            rate = rates.rate_on(date(year, month, 1))
         month_end = _month_end(year, month)
         if month_end <= until:
             total += accrual_for_month(employee, year, month, rate, start_date)
@@ -105,25 +110,22 @@ def accrued_total(employee: Employee, until: date, rate: Decimal,
 
 
 
-def employee_norm(employee: Employee, settings_row=None) -> Decimal:
-    """Годовая норма сотрудника: своя, если задана администратором, иначе общая."""
-    settings_row = settings_row or CompanySettings.get_solo()
-    return employee.annual_vacation_norm_override or settings_row.annual_vacation_norm_days
+def employee_norm(employee: Employee, day: date = None) -> Decimal:
+    """Годовая норма сотрудника на дату: своя, если задана, иначе общая."""
+    return history.EmployeeRates(employee).norm_on(day or date.today())
 
 
-def employee_accrual_rate(employee: Employee, settings_row=None) -> Decimal:
-    """Начисление в месяц пропорционально норме сотрудника.
+def employee_year_norm(employee: Employee, year: int) -> int:
+    """Норма за год — по месяцам, если норма в году менялась (history.EmployeeRates)."""
+    return history.EmployeeRates(employee).annual_norm(year)
 
-    Общая ставка задаётся вместе с общей нормой (2,33 к 28). Своя норма
-    меняет ставку в той же пропорции — 31 день даёт 2,58 в месяц, — иначе
-    за год накопилось бы меньше, чем положено по норме.
+
+def employee_accrual_rate(employee: Employee, day: date = None) -> Decimal:
+    """Начисление в месяц, пропорциональное норме сотрудника (2,33 к 28 → 2,58 к 31).
+
+    Без пропорции сотрудник со своей нормой за год накопил бы меньше положенного.
     """
-    settings_row = settings_row or CompanySettings.get_solo()
-    rate = settings_row.monthly_accrual_rate
-    override = employee.annual_vacation_norm_override
-    if not override or override == settings_row.annual_vacation_norm_days:
-        return rate
-    return (rate * override / settings_row.annual_vacation_norm_days).quantize(Decimal("0.01"))
+    return history.EmployeeRates(employee).rate_on(day or date.today())
 
 
 def balance_on(employee: Employee, on_date: date) -> Decimal:
@@ -132,9 +134,7 @@ def balance_on(employee: Employee, on_date: date) -> Decimal:
     Учитываются и запланированные отпуска — иначе один и тот же остаток
     можно было бы запланировать дважды.
     """
-    rate = employee_accrual_rate(employee)
-
-    accrued = accrued_total(employee, on_date, rate, accrual_start(employee))
+    accrued = accrued_total(employee, on_date, start_date=accrual_start(employee))
 
     manual = VacationLedger.objects.filter(
         employee=employee, entry_date__lte=on_date
@@ -246,8 +246,17 @@ class ValidationResult:
         return not self.violations
 
 
-def _rule(code: str):
-    return ValidationRule.objects.filter(code=code, is_enabled=True).first()
+def _rule(code: str, day: date = None):
+    """Включённое правило с порогом, действовавшим на дату (company/history.py).
+
+    Порог подставляется в загруженный объект и не сохраняется: каждая
+    проверка получает свежую копию правила, поэтому прочие места,
+    читающие threshold_value, работают без изменений.
+    """
+    rule = ValidationRule.objects.filter(code=code, is_enabled=True).first()
+    if rule is not None:
+        rule.threshold_value = history.rule_threshold(rule, day)
+    return rule
 
 
 def working_dates(date_from: date, date_to: date) -> set:
@@ -315,11 +324,11 @@ def annual_ceiling(employee, year: int):
     annual_ceiling (42 по умолчанию). Возвращает потолок и значение
     «норма + накопленное» — оно нужно для объяснения в сообщении.
     """
-    norm = int(employee_norm(employee))
+    norm = employee_year_norm(employee, year)
     stock_raw = balance_on(employee, date(year, 1, 1))
     stock = int(stock_raw) if stock_raw > 0 else 0
     accumulated_ceiling = norm + stock
-    rule = _rule("annual_ceiling")
+    rule = _rule("annual_ceiling", date(year, 1, 1))
     if rule and rule.threshold_value is not None:
         return min(accumulated_ceiling, int(rule.threshold_value)), accumulated_ceiling
     return accumulated_ceiling, accumulated_ceiling
@@ -364,7 +373,7 @@ def validate_entry(employee: Employee, date_from: date, date_to: date, record_ty
             )
             break
 
-    rule = _rule("max_continuous_workdays")
+    rule = _rule("max_continuous_workdays", date_from)
     if rule:
         start, end = continuous_block(employee, date_from, date_to, exclude_entry_id)
         workdays = len(working_dates(start, end))
@@ -382,7 +391,7 @@ def validate_entry(employee: Employee, date_from: date, date_to: date, record_ty
                 )
             )
 
-    rule = _rule("annual_ceiling")
+    rule = _rule("annual_ceiling", date_from)
     if rule:
         for year, added in split_by_year(date_from, date_to).items():
             planned = planned_days_in_year(employee, year, exclude_entry_id) + added
@@ -409,7 +418,7 @@ def validate_entry(employee: Employee, date_from: date, date_to: date, record_ty
             )
         )
 
-    rule = _rule("balance_overrun")
+    rule = _rule("balance_overrun", date_from)
     if rule:
         # Собственные черновики тоже расходуют баланс: иначе каждый отпуск
         # по отдельности укладывается в остаток, а вместе превышают его без
@@ -504,9 +513,9 @@ def validate_annual_plan(employee: Employee, year: int) -> ValidationResult:
         # Непрерывность считается по записи целиком, независимо от границы года.
         max_continuous = max(max_continuous, sum(per_year.values()))
 
-    norm = employee_norm(employee)
+    norm = employee_year_norm(employee, year)
 
-    rule = _rule("min_annual_days")
+    rule = _rule("min_annual_days", date(year, 1, 1))
     if rule:
         threshold = rule.threshold_value or norm
         if total_for_year < threshold:
@@ -518,7 +527,7 @@ def validate_annual_plan(employee: Employee, year: int) -> ValidationResult:
                 )
             )
 
-    rule = _rule("min_continuous_days")
+    rule = _rule("min_continuous_days", date(year, 1, 1))
     if rule and max_continuous < rule.threshold_value:
         result.violations.append(
             RuleViolation(
@@ -542,7 +551,7 @@ def annual_summary(employee: Employee, year: int) -> dict:
     Интерфейс показывает их постоянно, поэтому считаются они здесь —
     в единственном экземпляре, а не дублируются на клиенте.
     """
-    norm = int(employee_norm(employee))
+    norm = employee_year_norm(employee, year)
 
     entries = ScheduleEntry.objects.filter(
         employee=employee,
@@ -583,8 +592,8 @@ def annual_summary(employee: Employee, year: int) -> dict:
         "remaining": ceiling - planned,
         "longest_continuous": longest,
         "min_continuous_required": int(
-            _rule("min_continuous_days").threshold_value
-            if _rule("min_continuous_days") else 0),
+            continuous.threshold_value if (continuous := _rule("min_continuous_days",
+                                                                date(year, 1, 1))) else 0),
         "absence_days": absence_days,
     }
 
@@ -625,8 +634,9 @@ def tag_availability(employee: Employee, year: int) -> list:
 # Отгулы за работу в выходные дни
 # --------------------------------------------------------------------------
 
-def workday_hours() -> Decimal:
-    return CompanySettings.get_solo().workday_hours
+def workday_hours(day: date = None) -> Decimal:
+    """Длина рабочего дня на дату: столько часов списывает отгул в этот день."""
+    return history.company_value(history.Key.WORKDAY_HOURS, day)
 
 
 def is_rest_day(day: date) -> bool:
@@ -742,7 +752,7 @@ def spend_day_off(entry) -> None:
     TimeOffLedger.objects.create(
         employee=entry.employee,
         entry_date=entry.date_from,
-        hours_delta=-workday_hours(),
+        hours_delta=-workday_hours(entry.date_from),
         reason=TimeOffLedger.Reason.DAY_OFF_TAKEN,
         related_schedule_entry=entry,
         comment=f"Отгул {entry.date_from}",

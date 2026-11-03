@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { settingsApi } from "../api";
 import { errorText, fieldErrors, plural } from "../text";
 import EmployeePicker from "./EmployeePicker";
+import { HistoryLines, MonthPicker, thisMonth } from "./SettingHistory";
 import type {
   Branding, CompanySettingsRow, EmployeeBrief, HrViewer, RvdTrackingOverrides, VacationNormOverrides,
   ValidationRuleRow,
@@ -33,7 +34,8 @@ export default function Settings({ branding, onBack, onBrandingChanged }: {
 }
 
 const COMPANY_FIELDS: {
-  key: keyof Omit<CompanySettingsRow, "rvd_compensation_tracking_enabled" | "overtime_limits_enabled">;
+  key: keyof Omit<CompanySettingsRow,
+    "rvd_compensation_tracking_enabled" | "overtime_limits_enabled" | "history">;
   label: string;
   hint: string;
   step: string;
@@ -41,7 +43,7 @@ const COMPANY_FIELDS: {
   { key: "annual_vacation_norm_days", label: "Право на отпуск в год, дн.", step: "1",
     hint: "Право сотрудника на год по умолчанию (ст. 115 ТК РФ — 28). Своя норма у отдельных сотрудников — в блоке «Своя норма отпуска» ниже." },
   { key: "monthly_accrual_rate", label: "Начисление в месяц, дн.", step: "0.01",
-    hint: "Обычно норма / 12: 28 → 2,33. Баланс считается заново из истории, поэтому новое значение меняет остатки всех сотрудников задним числом." },
+    hint: "Обычно норма / 12: 28 → 2,33. Начисления до выбранного месяца не меняются." },
   { key: "approval_levels", label: "Уровней согласования", step: "1",
     hint: "Сколько уровней руководства согласуют график (1–5). Действует для графиков, отправленных после изменения." },
   { key: "workday_hours", label: "Длина рабочего дня, ч", step: "0.1",
@@ -57,6 +59,7 @@ function CompanySection() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [rvd, setRvd] = useState(true);
   const [limits, setLimits] = useState(false);
+  const [from, setFrom] = useState(thisMonth());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,17 +81,28 @@ function CompanySection() {
     .map((f) => f.key);
   const dirty = changed.length > 0 || rvd !== saved.rvd_compensation_tracking_enabled
     || limits !== saved.overtime_limits_enabled;
+  const dated = changed.some((key) => key in saved.history);
+
+  async function removeDated(key: string, month: string) {
+    if (!window.confirm("Отменить это изменение? С этого месяца снова будет действовать предыдущее значение.")) return;
+    try {
+      fill(await settingsApi.removeHistory<CompanySettingsRow>({ key, effective_from: month }));
+    } catch (err) {
+      setStatus(errorText(err));
+    }
+  }
 
   async function save() {
     if (!saved) return;
-    if (changed.includes("monthly_accrual_rate") && !window.confirm(
-      "Новая ставка начисления пересчитает остатки отпуска всех сотрудников задним числом. Продолжить?")) {
+    if (dated && from < thisMonth() && !window.confirm(
+      "Изменение задним числом пересчитает остатки и нормы сотрудников начиная с выбранного месяца. Продолжить?")) {
       return;
     }
     setBusy(true); setErrors({}); setStatus(null);
     try {
       const patch: Record<string, unknown> = {
         rvd_compensation_tracking_enabled: rvd, overtime_limits_enabled: limits,
+        effective_from: from,
       };
       changed.forEach((key) => { patch[key] = draft[key]; });
       fill(await settingsApi.save(patch as Partial<CompanySettingsRow>));
@@ -114,9 +128,23 @@ function CompanySection() {
             {errors[f.key]
               ? <span className="vs-field-error">{errors[f.key]}</span>
               : <span className="vs-muted vs-small">{f.hint}</span>}
+            {f.key in saved.history && (
+              <HistoryLines rows={saved.history[f.key as keyof CompanySettingsRow["history"]]}
+                format={(v) => String(v ?? "").replace(".", ",")}
+                onRemove={(month) => void removeDated(f.key, month)} />
+            )}
           </label>
         ))}
       </div>
+      {dated && (
+        <div className="vs-dated">
+          <MonthPicker label="Новые значения действуют с" value={from} onChange={setFrom} />
+          <span className="vs-muted vs-small">
+            Норма, начисление и длина рабочего дня меняются с первого числа месяца:
+            всё, что было раньше, считается по прежним значениям.
+          </span>
+        </div>
+      )}
       <label className="vs-check">
         <input type="checkbox" checked={rvd} onChange={(e) => setRvd(e.target.checked)} />
         Учитывать компенсацию работы в выходной (отгул или двойная оплата)
@@ -142,6 +170,7 @@ function CompanySection() {
 function RulesSection() {
   const [rules, setRules] = useState<ValidationRuleRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [from, setFrom] = useState(thisMonth());
 
   useEffect(() => {
     settingsApi.rules().then((page) => setRules(page.results))
@@ -156,29 +185,35 @@ function RulesSection() {
     <section className="vs-card vs-settings-section">
       <h2 className="vs-section-title">Правила проверки графика</h2>
       <p className="vs-muted vs-small">
-        Пороги — данные, а не код: новое значение сразу действует при внесении
-        и проверке отпусков. Уже внесённые записи не пересчитываются, пока
-        их не изменят или не отправят на согласование.
+        Пороги — данные, а не код. Новый порог действует с выбранного месяца:
+        для правил о годе (минимум за год, непрерывный отпуск) — с 1 января
+        года, к которому относится проверка, для остальных — с даты отпуска.
+        Уже внесённые записи не пересчитываются, пока их не изменят
+        или не отправят на согласование.
       </p>
+      <MonthPicker label="Изменения порогов действуют с" value={from} onChange={setFrom} />
       {error && <div className="vs-error vs-error-inline">{error}</div>}
       {rules === null ? <div className="vs-muted vs-small">Загружаем…</div> : (
         <div className="vs-rules">
-          {rules.map((rule) => <RuleLine key={rule.code} rule={rule} onSaved={replace} />)}
+          {rules.map((rule) => (
+            <RuleLine key={rule.code} rule={rule} from={from} onSaved={replace} />
+          ))}
         </div>
       )}
     </section>
   );
 }
 
-function RuleLine({ rule, onSaved }: {
+function RuleLine({ rule, from, onSaved }: {
   rule: ValidationRuleRow;
+  from: string;
   onSaved: (row: ValidationRuleRow) => void;
 }) {
   const [value, setValue] = useState(rule.threshold_value === null ? "" : String(Number(rule.threshold_value)));
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  async function patch(data: Partial<ValidationRuleRow>) {
+  async function patch(data: Partial<ValidationRuleRow> & { effective_from?: string }) {
     setError(null);
     try {
       const row = await settingsApi.saveRule(rule.code, data);
@@ -194,7 +229,7 @@ function RuleLine({ rule, onSaved }: {
   function commit() {
     if (rule.threshold_value === null) return;
     if (Number(value) === Number(rule.threshold_value) && value !== "") return;
-    void patch({ threshold_value: value === "" ? null : value });
+    void patch({ threshold_value: value === "" ? null : value, effective_from: from });
   }
 
   return (
@@ -219,6 +254,13 @@ function RuleLine({ rule, onSaved }: {
         {saved && <span className="vs-saved">сохранено</span>}
       </div>
       {error && <div className="vs-field-error vs-rule-error">{error}</div>}
+      <div className="vs-rule-error">
+        <HistoryLines rows={rule.threshold_history} format={(v) => String(v ?? "")}
+          onRemove={(month) => void settingsApi.removeHistory<ValidationRuleRow>(
+            { key: "rule_threshold", effective_from: month, rule_code: rule.code })
+            .then((row) => { onSaved(row); setValue(String(Number(row.threshold_value))); })
+            .catch((err) => setError(errorText(err)))} />
+      </div>
     </div>
   );
 }
@@ -390,6 +432,7 @@ function VacationNormSection() {
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<EmployeeBrief | null>(null);
   const [days, setDays] = useState("");
+  const [from, setFrom] = useState(thisMonth());
 
   useEffect(() => {
     settingsApi.vacationNorms().then(setData).catch((err) => setError(errorText(err)));
@@ -398,11 +441,20 @@ function VacationNormSection() {
   async function set(id: string, value: number | null) {
     setError(null);
     try {
-      setData(await settingsApi.setVacationNorm(id, value));
+      setData(await settingsApi.setVacationNorm(id, value, from));
       return true;
     } catch (err) {
       setError(errorText(err));
       return false;
+    }
+  }
+
+  async function remove(employeeId: string, month: string) {
+    try {
+      setData(await settingsApi.removeHistory<VacationNormOverrides>(
+        { key: "employee_norm", effective_from: month, employee_id: employeeId }));
+    } catch (err) {
+      setError(errorText(err));
     }
   }
 
@@ -416,14 +468,16 @@ function VacationNormSection() {
 
   if (!data) return <section className="vs-card">{error ?? "Загружаем…"}</section>;
   const n = data.company_norm;
+  const daysText = (v: number | null) => v === null ? "общая" : `${v} ${plural(v, "день", "дня", "дней")}`;
 
   return (
     <section className="vs-card vs-settings-section">
       <h2 className="vs-section-title">Своя норма отпуска</h2>
       <p className="vs-muted vs-small">
         Общая норма — {n} {plural(n, "день", "дня", "дней")} в год (выше). Сотруднику
-        с дополнительным отпуском можно задать свою: от неё считаются минимум
-        на год и потолок планирования, а начисление в месяц растёт в той же пропорции.
+        с дополнительным отпуском можно задать свою с выбранного месяца: от неё считаются
+        минимум на год и потолок планирования, а начисление в месяц растёт в той же пропорции.
+        Если норма меняется в середине года, годовая считается по месяцам.
       </p>
       {error && <div className="vs-error vs-error-inline">{error}</div>}
 
@@ -435,13 +489,17 @@ function VacationNormSection() {
               <tr key={e.id}>
                 <td>{e.name}{e.org_unit && <div className="vs-muted vs-small">{e.org_unit}</div>}</td>
                 <td>
-                  {e.norm} {plural(e.norm, "день", "дня", "дней")}
-                  <div className="vs-muted vs-small">{e.monthly_rate} в месяц</div>
+                  Сейчас: {daysText(e.norm)}
+                  <div className="vs-muted vs-small">{String(e.monthly_rate).replace(".", ",")} в месяц</div>
+                  <HistoryLines rows={e.history} format={daysText}
+                    onRemove={(month) => void remove(e.id, month)} />
                 </td>
                 <td className="vs-override-cell">
-                  <button className="vs-link" onClick={() => void set(e.id, null)}>
-                    Вернуть общую
-                  </button>
+                  {e.norm !== null && (
+                    <button className="vs-link" onClick={() => void set(e.id, null)}>
+                      Вернуть общую
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -451,19 +509,21 @@ function VacationNormSection() {
       )}
 
       <div className="vs-timeoff-form">
-        <EmployeePicker label="Сотрудник" selected={picked}
-          exclude={new Set(data.employees.map((e) => e.id))}
-          onSelect={(e) => setPicked(e)} />
+        <EmployeePicker label="Сотрудник" selected={picked} onSelect={(e) => setPicked(e)} />
         <label className="vs-field">
           Норма, дн.
           <input type="number" min={1} max={90} step={1} value={days}
             onChange={(e) => setDays(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void add(); }} />
         </label>
+        <MonthPicker label="Действует с" value={from} onChange={setFrom} />
         <button className="vs-btn" disabled={!picked || !days} onClick={() => void add()}>
           Задать норму
         </button>
       </div>
+      <p className="vs-muted vs-small">
+        «Вернуть общую» тоже действует с выбранного месяца.
+      </p>
     </section>
   );
 }

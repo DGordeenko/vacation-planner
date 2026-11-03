@@ -10,8 +10,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from company.models import AbsenceReason, CompanySettings, Holiday
-from config.params import parse_date, parse_year
+from company import history
+from company.models import AbsenceReason, CompanySettings, Holiday, SettingVersion
+from config.params import parse_date, parse_month, parse_year
 from config.permissions import ADMIN_ONLY, ADMIN_WRITES, visible_employee_or_403
 from employees.models import Employee
 from schedule import approvals, calculations
@@ -58,6 +59,17 @@ class ValidationRuleViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "patch", "head", "options"]
 
     permission_classes = ADMIN_WRITES
+
+    def perform_update(self, serializer):
+        """Новый порог действует с месяца `effective_from` (по умолчанию — текущего)."""
+        rule = serializer.instance
+        data = serializer.validated_data
+        if "threshold_value" in data and data["threshold_value"] is not None:
+            effective_from = parse_month(self.request.data.get("effective_from"))
+            data["threshold_value"] = history.set_value(
+                history.Key.RULE_THRESHOLD, effective_from, data["threshold_value"],
+                current=rule.threshold_value, rule_code=rule.code)
+        serializer.save()
 
 
 class ScheduleEntryViewSet(viewsets.ModelViewSet):
@@ -407,11 +419,15 @@ SETTINGS_FLAGS = ["rvd_compensation_tracking_enabled", "overtime_limits_enabled"
 
 
 def _settings_payload(row):
+    """Значения на сегодня и история тех, что меняются «с даты»."""
+    timelines = {key: history.company_timeline(key, row) for key in history.COMPANY_KEYS}
+    today = date.today()
     return {
-        "annual_vacation_norm_days": float(row.annual_vacation_norm_days),
-        "monthly_accrual_rate": float(row.monthly_accrual_rate),
+        "annual_vacation_norm_days": float(timelines["annual_vacation_norm_days"].on(today)),
+        "monthly_accrual_rate": float(timelines["monthly_accrual_rate"].on(today)),
         "approval_levels": row.approval_levels,
-        "workday_hours": float(row.workday_hours),
+        "workday_hours": float(timelines["workday_hours"].on(today)),
+        "history": {key: line.rows() for key, line in timelines.items()},
         "rvd_compensation_tracking_enabled": row.rvd_compensation_tracking_enabled,
         "overtime_limits_enabled": row.overtime_limits_enabled,
         "overtime_limit_two_days_hours": float(row.overtime_limit_two_days_hours),
@@ -424,9 +440,9 @@ class CompanySettingsView(APIView):
 
     """Глобальные настройки расчётов. Читают все, меняет администратор.
 
-    Изменение действует сразу и на всех: баланс не хранится, а считается,
-    поэтому новая ставка начисления пересчитывает остатки задним числом.
-    Интерфейс предупреждает об этом перед сохранением.
+    Норма, ставка начисления и длина рабочего дня меняются «с месяца»
+    (`effective_from`, по умолчанию — текущий): прошлые месяцы считаются
+    по прежним значениям (company/history.py). Остальное действует сразу.
     """
 
     def get(self, request):
@@ -434,7 +450,9 @@ class CompanySettingsView(APIView):
 
     def patch(self, request):
         row = CompanySettings.get_solo()
+        effective_from = parse_month(request.data.get("effective_from"))
         errors = {}
+        dated = {}
         for field, (low, high) in SETTINGS_LIMITS.items():
             if field not in request.data:
                 continue
@@ -449,7 +467,10 @@ class CompanySettingsView(APIView):
             if not low <= value <= high:
                 errors[field] = [f"Допустимо от {low} до {high}"]
                 continue
-            setattr(row, field, value)
+            if field in history.COMPANY_KEYS:
+                dated[field] = value
+            else:
+                setattr(row, field, value)
         for name in SETTINGS_FLAGS:
             flag = request.data.get(name)
             if flag is None:
@@ -460,7 +481,15 @@ class CompanySettingsView(APIView):
                 setattr(row, name, flag)
         if errors:
             return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
-        row.save()
+        with transaction.atomic():
+            for field, value in dated.items():
+                timeline = history.company_timeline(field, row)
+                if timeline.on(effective_from) == value:
+                    continue  # не изменилось — лишняя строка истории ни к чему
+                # Поле хранит значение на сегодня — для журнала и запасного чтения.
+                setattr(row, field, history.set_value(field, effective_from, value,
+                                                      current=getattr(row, field)))
+            row.save()
         return Response(_settings_payload(row))
 
 
@@ -955,29 +984,38 @@ class RvdTrackingOverridesView(APIView):
 class VacationNormOverridesView(APIView):
     """Индивидуальные нормы отпуска (ФЗ, п. 7.5).
 
-    GET — общая норма и сотрудники со своей нормой.
-    POST {employee_id, value} — задать свою норму в днях; null — вернуть общую.
-    Ставка начисления меняется пропорционально (calculations.employee_accrual_rate).
+    GET — общая норма и сотрудники со своей нормой (сейчас или в истории).
+    POST {employee_id, value, effective_from} — своя норма в днях с месяца
+    (по умолчанию — текущего); null — с этого месяца вернуть общую.
+    Ставка начисления меняется пропорционально (company/history.EmployeeRates).
     """
 
     permission_classes = ADMIN_ONLY
 
     def get(self, request):
-        settings_row = CompanySettings.get_solo()
-        rate = calculations.employee_accrual_rate
-        employees = (Employee.objects.filter(annual_vacation_norm_override__isnull=False)
+        today = date.today()
+        with_history = SettingVersion.objects.filter(
+            key=history.Key.EMPLOYEE_NORM).values_list("employee_id", flat=True)
+        employees = (Employee.objects.filter(Q(annual_vacation_norm_override__isnull=False)
+                                             | Q(id__in=with_history))
                      .select_related("org_unit").order_by("full_name"))
+        rows = []
+        for employee in employees:
+            rates = history.EmployeeRates(employee)
+            own = rates.own.on(today)
+            rows.append({"id": str(employee.id), "name": employee.full_name,
+                         "org_unit": employee.org_unit.name if employee.org_unit else None,
+                         "norm": float(own) if own else None,
+                         "monthly_rate": float(rates.rate_on(today)),
+                         "history": rates.own.rows()})
         return Response({
-            "company_norm": float(settings_row.annual_vacation_norm_days),
-            "employees": [{"id": str(e.id), "name": e.full_name,
-                           "org_unit": e.org_unit.name if e.org_unit else None,
-                           "norm": float(e.annual_vacation_norm_override),
-                           "monthly_rate": float(rate(e, settings_row))}
-                          for e in employees],
+            "company_norm": float(history.company_value(history.Key.VACATION_NORM)),
+            "employees": rows,
         })
 
     def post(self, request):
         employee = get_object_or_404(Employee, id=request.data.get("employee_id"))
+        effective_from = parse_month(request.data.get("effective_from"))
         value = request.data.get("value")
         if value is not None:
             try:
@@ -990,8 +1028,44 @@ class VacationNormOverridesView(APIView):
                                  "code": "bad_parameter"},
                                 status=status.HTTP_400_BAD_REQUEST)
             # Норма, равная общей, — не исключение: иначе её не изменит правка общей.
-            if value == CompanySettings.get_solo().annual_vacation_norm_days:
+            if value == history.company_value(history.Key.VACATION_NORM, effective_from):
                 value = None
-        employee.annual_vacation_norm_override = value
+        employee.annual_vacation_norm_override = history.set_value(
+            history.Key.EMPLOYEE_NORM, effective_from, value,
+            current=employee.annual_vacation_norm_override, employee=employee)
         employee.save(update_fields=["annual_vacation_norm_override"])
         return self.get(request)
+
+
+class SettingHistoryView(APIView):
+    """Отменить изменение настройки «с месяца» — например, внесённое по ошибке.
+
+    DELETE ?key=&effective_from=ГГГГ-ММ[&rule_code=][&employee_id=] — с этого
+    месяца снова действует предыдущее значение. Начальное значение не удаляется.
+    """
+
+    permission_classes = ADMIN_ONLY
+
+    def delete(self, request):
+        params = request.query_params
+        key = params.get("key")
+        if key not in history.Key.values:
+            return Response({"detail": "Неизвестная настройка", "code": "bad_parameter"},
+                            status=status.HTTP_400_BAD_REQUEST)
+        effective_from = parse_month(params.get("effective_from"))
+        if key in history.COMPANY_KEYS:
+            row = CompanySettings.get_solo()
+            setattr(row, key, history.remove_value(key, effective_from, getattr(row, key)))
+            row.save()
+            return Response(_settings_payload(row))
+        if key == history.Key.RULE_THRESHOLD:
+            rule = get_object_or_404(ValidationRule, code=params.get("rule_code"))
+            rule.threshold_value = history.remove_value(
+                key, effective_from, rule.threshold_value, rule_code=rule.code)
+            rule.save(update_fields=["threshold_value"])
+            return Response(ValidationRuleSerializer(rule).data)
+        employee = get_object_or_404(Employee, id=params.get("employee_id"))
+        employee.annual_vacation_norm_override = history.remove_value(
+            key, effective_from, employee.annual_vacation_norm_override, employee=employee)
+        employee.save(update_fields=["annual_vacation_norm_override"])
+        return VacationNormOverridesView().get(request)

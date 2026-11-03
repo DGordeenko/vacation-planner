@@ -6,6 +6,17 @@
 """
 
 FIELD_LABELS = {
+    "effective_from": "Действует с",
+    "rule_code": "Правило",
+    "value": "Значение",
+    "key": "Настройка",
+    "work_time_from": "Начало работы",
+    "work_time_to": "Окончание работы",
+    "overtime_compensation": "Компенсация сверхурочных",
+    "approval_stage": "Согласовано уровней",
+    "overtime_limits_enabled": "Контроль пределов сверхурочных",
+    "overtime_limit_two_days_hours": "Сверхурочные за два дня, ч",
+    "overtime_limit_year_hours": "Сверхурочные за год, ч",
     "annual_vacation_norm_days": "Годовая норма отпуска, дн.",
     "annual_vacation_norm_override": "Своя годовая норма",
     "approval": "Согласование",

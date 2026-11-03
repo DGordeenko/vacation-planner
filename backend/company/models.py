@@ -96,3 +96,40 @@ class CompanySettings(models.Model):
         if settings_row is None:
             settings_row = cls.objects.create()
         return settings_row
+
+
+class SettingVersion(models.Model):
+    """Значение настройки, действующее с первого числа месяца (ФЗ, вопрос 5).
+
+    Без истории правка нормы или ставки пересчитывала прошлые годы по новому
+    значению. Теперь значение берётся на нужный месяц: что было до даты,
+    считается по-старому. Логика — в company/history.py.
+    """
+
+    class Key(models.TextChoices):
+        VACATION_NORM = "annual_vacation_norm_days", "Право на отпуск в год, дн."
+        ACCRUAL_RATE = "monthly_accrual_rate", "Начисление в месяц, дн."
+        WORKDAY_HOURS = "workday_hours", "Длина рабочего дня, ч"
+        RULE_THRESHOLD = "rule_threshold", "Порог правила"
+        EMPLOYEE_NORM = "employee_norm", "Своя норма отпуска, дн."
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    key = models.CharField(max_length=32, choices=Key.choices)
+    rule_code = models.CharField(max_length=64, blank=True)
+    employee = models.ForeignKey("employees.Employee", null=True, blank=True,
+                                 on_delete=models.CASCADE, related_name="setting_versions")
+    effective_from = models.DateField(help_text="Всегда первое число месяца.")
+    # Пусто — «как в общей настройке» (только для своей нормы сотрудника).
+    value = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # Одно значение на месяц обеспечивает history.set_value (update_or_create):
+        # уникальность с пустым сотрудником в БД зависит от версии PostgreSQL.
+        ordering = ["key", "rule_code", "effective_from"]
+        indexes = [models.Index(fields=["key", "rule_code", "employee", "effective_from"])]
+        verbose_name = "Значение настройки с даты"
+        verbose_name_plural = "История настроек"
+
+    def __str__(self):
+        return f"{self.get_key_display()} с {self.effective_from:%m.%Y}: {self.value}"

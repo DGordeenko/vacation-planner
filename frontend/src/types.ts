@@ -218,6 +218,12 @@ export interface AuditEntityType {
   name: string;
 }
 
+/** Значение настройки с первого числа месяца. Первая строка — «ранее». */
+export interface SettingHistoryRow {
+  effective_from: string;
+  value: number | null;
+}
+
 export interface CompanySettingsRow {
   annual_vacation_norm_days: number;
   monthly_accrual_rate: number;
@@ -227,6 +233,9 @@ export interface CompanySettingsRow {
   overtime_limits_enabled: boolean;
   overtime_limit_two_days_hours: number;
   overtime_limit_year_hours: number;
+  /** Значения выше — на сегодня; здесь — с какого месяца что действует. */
+  history: Record<"annual_vacation_norm_days" | "monthly_accrual_rate" | "workday_hours",
+    SettingHistoryRow[]>;
 }
 
 export interface RvdTrackingOverrides {
@@ -238,8 +247,10 @@ export interface RvdTrackingOverrides {
 /** Индивидуальные нормы отпуска: ставку в месяц считает сервер. */
 export interface VacationNormOverrides {
   company_norm: number;
-  employees: { id: string; name: string; org_unit: string | null; norm: number;
-    monthly_rate: number }[];
+  employees: { id: string; name: string; org_unit: string | null;
+    /** Своя норма на сегодня; null — сегодня действует общая (своя — в истории). */
+    norm: number | null;
+    monthly_rate: number; history: SettingHistoryRow[] }[];
 }
 
 export interface HrViewer {
@@ -256,6 +267,7 @@ export interface ValidationRuleRow {
   is_enabled: boolean;
   /** Строка: DecimalField приходит из DRF строкой. null — у правила нет порога. */
   threshold_value: string | null;
+  threshold_history: SettingHistoryRow[];
   approver_level: string;
 }
 
