@@ -26,7 +26,7 @@
 | is_admin | bool | Флаг административных прав (может быть выставлен любому сотруднику) |
 | status | enum (`active`, `inactive`) | Статус сотрудника (уволенные не удаляются — сохраняется история и аудит) |
 | termination_date | date, nullable | Дата увольнения |
-| annual_vacation_norm_override | decimal, nullable | Индивидуальная норма отпуска (null = действует глобальная из `CompanySettings`) |
+| annual_vacation_norm_override | decimal, nullable | Индивидуальная норма отпуска (null = действует глобальная из `CompanySettings`); задаётся в настройках, ставка начисления пропорциональна |
 | rvd_compensation_tracking_override | bool, nullable | Индивидуальное переопределение учёта компенсации РВД (null = наследуется от оргединицы/системы) |
 | created_at / updated_at | datetime | Служебные |
 

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { settingsApi } from "../api";
-import { errorText, fieldErrors } from "../text";
+import { errorText, fieldErrors, plural } from "../text";
 import EmployeePicker from "./EmployeePicker";
 import type {
-  Branding, CompanySettingsRow, RvdTrackingOverrides, ValidationRuleRow,
+  Branding, CompanySettingsRow, EmployeeBrief, RvdTrackingOverrides, VacationNormOverrides,
+  ValidationRuleRow,
 } from "../types";
 
 /** Настройки (релиз 1.2): нормы и расчёты, правила проверки, оформление.
@@ -21,6 +22,7 @@ export default function Settings({ branding, onBack, onBrandingChanged }: {
       </div>
       <div className="vs-settings">
         <CompanySection />
+        <VacationNormSection />
         <RvdTrackingSection />
         <RulesSection />
         <BrandingSection branding={branding} onChanged={onBrandingChanged} />
@@ -364,5 +366,89 @@ function OverrideSelect({ value, onChange }: {
       <option value="off">Не учитывать</option>
       <option value="">Как выше (убрать исключение)</option>
     </select>
+  );
+}
+
+/** Своя норма отпуска — для категорий с дополнительным отпуском (ФЗ, п. 7.5). */
+function VacationNormSection() {
+  const [data, setData] = useState<VacationNormOverrides | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [picked, setPicked] = useState<EmployeeBrief | null>(null);
+  const [days, setDays] = useState("");
+
+  useEffect(() => {
+    settingsApi.vacationNorms().then(setData).catch((err) => setError(errorText(err)));
+  }, []);
+
+  async function set(id: string, value: number | null) {
+    setError(null);
+    try {
+      setData(await settingsApi.setVacationNorm(id, value));
+      return true;
+    } catch (err) {
+      setError(errorText(err));
+      return false;
+    }
+  }
+
+  async function add() {
+    if (!picked) return;
+    if (await set(picked.id, Number(days))) {
+      setPicked(null);
+      setDays("");
+    }
+  }
+
+  if (!data) return <section className="vs-card">{error ?? "Загружаем…"}</section>;
+  const n = data.company_norm;
+
+  return (
+    <section className="vs-card vs-settings-section">
+      <h2 className="vs-section-title">Своя норма отпуска</h2>
+      <p className="vs-muted vs-small">
+        Общая норма — {n} {plural(n, "день", "дня", "дней")} в год (выше). Сотруднику
+        с дополнительным отпуском можно задать свою: от неё считаются минимум
+        на год и потолок планирования, а начисление в месяц растёт в той же пропорции.
+      </p>
+      {error && <div className="vs-error vs-error-inline">{error}</div>}
+
+      {data.employees.length > 0 && (
+        <div className="vs-table-scroll">
+        <table className="vs-table">
+          <tbody>
+            {data.employees.map((e) => (
+              <tr key={e.id}>
+                <td>{e.name}{e.org_unit && <div className="vs-muted vs-small">{e.org_unit}</div>}</td>
+                <td>
+                  {e.norm} {plural(e.norm, "день", "дня", "дней")}
+                  <div className="vs-muted vs-small">{e.monthly_rate} в месяц</div>
+                </td>
+                <td className="vs-override-cell">
+                  <button className="vs-link" onClick={() => void set(e.id, null)}>
+                    Вернуть общую
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      )}
+
+      <div className="vs-timeoff-form">
+        <EmployeePicker label="Сотрудник" selected={picked}
+          exclude={new Set(data.employees.map((e) => e.id))}
+          onSelect={(e) => setPicked(e)} />
+        <label className="vs-field">
+          Норма, дн.
+          <input type="number" min={1} max={90} step={1} value={days}
+            onChange={(e) => setDays(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void add(); }} />
+        </label>
+        <button className="vs-btn" disabled={!picked || !days} onClick={() => void add()}>
+          Задать норму
+        </button>
+      </div>
+    </section>
   );
 }

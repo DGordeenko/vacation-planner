@@ -7,7 +7,7 @@
 
 import type {
   Absence, AbsenceReason, AbsenceSummary, AnnualSummary, AuditEntityType, AuditRow, CheckResult,
-  RvdCompensation, RvdRow, RvdTrackingOverrides, TimeOffBalance, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
+  RvdCompensation, RvdRow, RvdTrackingOverrides, VacationNormOverrides, TimeOffBalance, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
   DemoRoleCode, EmployeeBrief, EmployeeImportReport, Invitation, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
   TeamEntryDetail, TeamScope,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
@@ -276,6 +276,10 @@ export const settingsApi = {
   setRvdTracking: (kind: "unit" | "employee", id: string, value: boolean | null) =>
     request<RvdTrackingOverrides>("/settings/rvd-tracking/",
       { method: "POST", body: JSON.stringify({ kind, id, value }) }),
+  vacationNorms: () => request<VacationNormOverrides>("/settings/vacation-norms/"),
+  setVacationNorm: (employeeId: string, value: number | null) =>
+    request<VacationNormOverrides>("/settings/vacation-norms/",
+      { method: "POST", body: JSON.stringify({ employee_id: employeeId, value }) }),
   saveBranding: (patch: Partial<Branding>) =>
     request<Branding>("/settings/branding/", { method: "PATCH", body: JSON.stringify(patch) }),
 };

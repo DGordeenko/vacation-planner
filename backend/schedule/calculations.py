@@ -104,14 +104,35 @@ def accrued_total(employee: Employee, until: date, rate: Decimal,
     return total.quantize(Decimal("0.01"))
 
 
+
+def employee_norm(employee: Employee, settings_row=None) -> Decimal:
+    """Годовая норма сотрудника: своя, если задана администратором, иначе общая."""
+    settings_row = settings_row or CompanySettings.get_solo()
+    return employee.annual_vacation_norm_override or settings_row.annual_vacation_norm_days
+
+
+def employee_accrual_rate(employee: Employee, settings_row=None) -> Decimal:
+    """Начисление в месяц пропорционально норме сотрудника.
+
+    Общая ставка задаётся вместе с общей нормой (2,33 к 28). Своя норма
+    меняет ставку в той же пропорции — 31 день даёт 2,58 в месяц, — иначе
+    за год накопилось бы меньше, чем положено по норме.
+    """
+    settings_row = settings_row or CompanySettings.get_solo()
+    rate = settings_row.monthly_accrual_rate
+    override = employee.annual_vacation_norm_override
+    if not override or override == settings_row.annual_vacation_norm_days:
+        return rate
+    return (rate * override / settings_row.annual_vacation_norm_days).quantize(Decimal("0.01"))
+
+
 def balance_on(employee: Employee, on_date: date) -> Decimal:
     """Баланс отпускных дней на произвольную дату.
 
     Учитываются и запланированные отпуска — иначе один и тот же остаток
     можно было бы запланировать дважды.
     """
-    settings_row = CompanySettings.get_solo()
-    rate = settings_row.monthly_accrual_rate
+    rate = employee_accrual_rate(employee)
 
     accrued = accrued_total(employee, on_date, rate, accrual_start(employee))
 
@@ -294,8 +315,7 @@ def annual_ceiling(employee, year: int):
     annual_ceiling (42 по умолчанию). Возвращает потолок и значение
     «норма + накопленное» — оно нужно для объяснения в сообщении.
     """
-    settings_row = CompanySettings.get_solo()
-    norm = int(employee.annual_vacation_norm_override or settings_row.annual_vacation_norm_days)
+    norm = int(employee_norm(employee))
     stock_raw = balance_on(employee, date(year, 1, 1))
     stock = int(stock_raw) if stock_raw > 0 else 0
     accumulated_ceiling = norm + stock
@@ -484,8 +504,7 @@ def validate_annual_plan(employee: Employee, year: int) -> ValidationResult:
         # Непрерывность считается по записи целиком, независимо от границы года.
         max_continuous = max(max_continuous, sum(per_year.values()))
 
-    settings_row = CompanySettings.get_solo()
-    norm = employee.annual_vacation_norm_override or settings_row.annual_vacation_norm_days
+    norm = employee_norm(employee)
 
     rule = _rule("min_annual_days")
     if rule:
@@ -523,9 +542,7 @@ def annual_summary(employee: Employee, year: int) -> dict:
     Интерфейс показывает их постоянно, поэтому считаются они здесь —
     в единственном экземпляре, а не дублируются на клиенте.
     """
-    settings_row = CompanySettings.get_solo()
-    norm = employee.annual_vacation_norm_override or settings_row.annual_vacation_norm_days
-    norm = int(norm)
+    norm = int(employee_norm(employee))
 
     entries = ScheduleEntry.objects.filter(
         employee=employee,

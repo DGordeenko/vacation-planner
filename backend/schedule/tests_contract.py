@@ -424,3 +424,19 @@ class RvdContractTests(TestCase):
         self.assertEqual(RVD_FIELDS, set(created))
         listed = client.get("/api/v1/admin/rvd/?year=2026&month=10").json()
         self.assertEqual(RVD_FIELDS, set(listed["results"][0]))
+
+
+# types.ts: VacationNormOverrides
+class VacationNormContractTests(TestCase):
+    def test_vacation_norms_contract(self):
+        CompanySettings.get_solo()
+        admin = Employee.objects.create_user(
+            email="a@n.ru", employee_number="1", full_name="А", hire_date=date(2015, 1, 1),
+            is_admin=True)
+        client = APIClient()
+        client.force_authenticate(admin)
+        body = client.post("/api/v1/settings/vacation-norms/",
+                           {"employee_id": str(admin.id), "value": 31}, format="json").json()
+        self.assertEqual({"company_norm", "employees"}, set(body))
+        self.assertEqual({"id", "name", "org_unit", "norm", "monthly_rate"},
+                         set(body["employees"][0]))

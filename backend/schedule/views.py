@@ -941,3 +941,48 @@ class RvdTrackingOverridesView(APIView):
         target.rvd_compensation_tracking_override = value
         target.save(update_fields=["rvd_compensation_tracking_override"])
         return self.get(request)
+
+
+class VacationNormOverridesView(APIView):
+    """Индивидуальные нормы отпуска (ФЗ, п. 7.5).
+
+    GET — общая норма и сотрудники со своей нормой.
+    POST {employee_id, value} — задать свою норму в днях; null — вернуть общую.
+    Ставка начисления меняется пропорционально (calculations.employee_accrual_rate).
+    """
+
+    permission_classes = ADMIN_ONLY
+
+    def get(self, request):
+        settings_row = CompanySettings.get_solo()
+        rate = calculations.employee_accrual_rate
+        employees = (Employee.objects.filter(annual_vacation_norm_override__isnull=False)
+                     .select_related("org_unit").order_by("full_name"))
+        return Response({
+            "company_norm": float(settings_row.annual_vacation_norm_days),
+            "employees": [{"id": str(e.id), "name": e.full_name,
+                           "org_unit": e.org_unit.name if e.org_unit else None,
+                           "norm": float(e.annual_vacation_norm_override),
+                           "monthly_rate": float(rate(e, settings_row))}
+                          for e in employees],
+        })
+
+    def post(self, request):
+        employee = get_object_or_404(Employee, id=request.data.get("employee_id"))
+        value = request.data.get("value")
+        if value is not None:
+            try:
+                value = Decimal(str(value))
+                bad = not (1 <= value <= 90) or value != value.to_integral()
+            except (InvalidOperation, ValueError):
+                bad = True
+            if bad:
+                return Response({"detail": "Норма — целое число дней от 1 до 90",
+                                 "code": "bad_parameter"},
+                                status=status.HTTP_400_BAD_REQUEST)
+            # Норма, равная общей, — не исключение: иначе её не изменит правка общей.
+            if value == CompanySettings.get_solo().annual_vacation_norm_days:
+                value = None
+        employee.annual_vacation_norm_override = value
+        employee.save(update_fields=["annual_vacation_norm_override"])
+        return self.get(request)
