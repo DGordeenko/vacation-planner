@@ -1,5 +1,6 @@
 """Разбор адреса базы данных из переменной окружения."""
 
+import os
 from unittest import mock
 
 from django.test import SimpleTestCase, override_settings
@@ -98,3 +99,45 @@ class DatabaseTlsCheckTests(SimpleTestCase):
 
     def test_quiet_with_verify_full(self):
         self.assertNotIn("vacation.W001", _ids(OPTIONS={"sslmode": "verify-full"}))
+
+
+class SecuritySettingsTests(SimpleTestCase):
+    """Значения, которые проверяет check --deploy; меняются только осознанно."""
+
+    def test_defaults(self):
+        from django.conf import settings
+        self.assertEqual(settings.SECURE_PROXY_SSL_HEADER, ("HTTP_X_FORWARDED_PROTO", "https"))
+        self.assertTrue(settings.SESSION_COOKIE_HTTPONLY)
+        self.assertEqual(settings.SESSION_COOKIE_SAMESITE, "Lax")
+        self.assertEqual(settings.X_FRAME_OPTIONS, "DENY")
+        self.assertEqual(settings.SECURE_REFERRER_POLICY, "same-origin")
+        self.assertTrue(settings.SECURE_CONTENT_TYPE_NOSNIFF)
+        self.assertIn(r"^api/health/", settings.SECURE_REDIRECT_EXEMPT)
+
+    def test_star_in_allowed_hosts_is_error(self):
+        from config.checks import check_allowed_hosts
+        with override_settings(DEBUG=False, ALLOWED_HOSTS=["*"]):
+            self.assertEqual([e.id for e in check_allowed_hosts(None)], ["vacation.E002"])
+        with override_settings(DEBUG=False, ALLOWED_HOSTS=["vacation.example.com"]):
+            self.assertEqual(check_allowed_hosts(None), [])
+
+    def test_https_detected_behind_proxy(self):
+        """С заголовком прокси запрос считается защищённым."""
+        from django.test import RequestFactory
+        request = RequestFactory().get("/", HTTP_X_FORWARDED_PROTO="https")
+        self.assertTrue(request.is_secure())
+
+    def test_secure_cookies_follow_debug(self):
+        import importlib
+
+        import config.settings as s
+        for env, expected in (({"DEBUG": "False", "SECURE_COOKIES": ""}, True),
+                              ({"DEBUG": "True", "SECURE_COOKIES": ""}, False),
+                              ({"DEBUG": "False", "SECURE_COOKIES": "False"}, False)):
+            with mock.patch.dict("os.environ", env):
+                if not env["SECURE_COOKIES"]:
+                    del os.environ["SECURE_COOKIES"]
+                importlib.reload(s)
+                self.assertEqual((s.SESSION_COOKIE_SECURE, s.CSRF_COOKIE_SECURE),
+                                 (expected, expected), env)
+        importlib.reload(s)

@@ -9,6 +9,19 @@ from django.core import checks
 
 
 @checks.register(checks.Tags.security, deploy=True)
+def check_allowed_hosts(app_configs, **kwargs):
+    """«*» в ALLOWED_HOSTS отключает проверку заголовка Host: ссылки сброса
+    пароля и приглашения можно было бы собрать с чужим доменом."""
+    if settings.DEBUG or "*" not in settings.ALLOWED_HOSTS:
+        return []
+    return [checks.Error(
+        "ALLOWED_HOSTS содержит «*».",
+        hint="Перечислите домены приложения и имя сервиса бэкенда.",
+        id="vacation.E002",
+    )]
+
+
+@checks.register(checks.Tags.security, deploy=True)
 def check_database_tls(app_configs, **kwargs):
     """Без verify-full пароль и персональные данные идут к базе либо открытым
     текстом, либо по TLS без проверки, с тем ли сервером идёт разговор.

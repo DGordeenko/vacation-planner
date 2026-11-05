@@ -182,6 +182,8 @@ cd frontend && npm run lint && npx tsc -b && npm run build
 | `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS` | Нужны, только если фронтенд на другом домене |
 | `VITE_API_BASE_URL` | Адрес API. Пусто — относительный путь через прокси nginx |
 | `DJANGO_ADMIN_PATH`, `ADMIN_ALLOW_CIDRS` | Путь админки Django (одинаковый у бэкенда и фронтенда) и адреса, которым она открыта через nginx фронтенда. Пусто — 403 всем |
+| `SECURE_COOKIES`, `SECURE_HSTS_SECONDS`, `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_AGE` | HTTPS-настройки Django. Cookies только по HTTPS включены при `DEBUG=False` (в compose выключены: там http://localhost); HSTS по умолчанию выключен — включать после проверки домена |
+| `SILENCED_SYSTEM_CHECKS` | Осознанно принятые предупреждения `manage.py check --deploy`, через запятую |
 | `RUN_MIGRATIONS` | `0` отключает миграции при старте контейнера |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Первый администратор, создаётся при старте, если его ещё нет. Подробно — `docs/14-initial-admin.md` |
 | `ADMIN_FULL_NAME`, `ADMIN_EMPLOYEE_NUMBER`, `ADMIN_HIRE_DATE` | Необязательные поля администратора, есть значения по умолчанию |
