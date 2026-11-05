@@ -373,3 +373,17 @@ class LoginThrottleTests(TestCase):
         self.assertEqual(codes[:10], [401] * 10)
         self.assertEqual(codes[10], 429)
         cache.clear()
+
+    def test_forged_forwarded_for_does_not_reset_limit(self):
+        """Адрес клиента — последний в X-Forwarded-For (его ставит nginx).
+        Раньше ключом был весь заголовок, и новая подделка давала новые попытки."""
+        from django.core.cache import cache
+        from rest_framework.test import APIClient
+        cache.clear()
+        client = APIClient()
+        codes = [client.post("/api/v1/auth/login/", {"email": "x@y.ru", "password": "bad"},
+                             format="json",
+                             HTTP_X_FORWARDED_FOR=f"10.9.9.{i}, 203.0.113.7").status_code
+                 for i in range(11)]
+        self.assertEqual(codes[10], 429)
+        cache.clear()

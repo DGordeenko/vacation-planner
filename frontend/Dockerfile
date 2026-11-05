@@ -22,12 +22,13 @@ ENV PORT=8080 \
     BACKEND_URL=http://backend:8000 \
     NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     DJANGO_ADMIN_PATH=admin \
-    ADMIN_ALLOW_CIDRS=""
+    ADMIN_ALLOW_CIDRS="" \
+    TRUSTED_PROXY_CIDRS="10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,fc00::/7"
 
 COPY --from=builder /build/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 # Список адресов для админки собирается при старте контейнера.
-COPY docker-entrypoint.d/15-admin-allow.sh /docker-entrypoint.d/
+COPY docker-entrypoint.d/15-admin-allow.sh docker-entrypoint.d/16-trusted-proxies.sh /docker-entrypoint.d/
 
 # Образ nginx сам подставляет переменные окружения в шаблоны из
 # /etc/nginx/templates при старте — отдельный скрипт не нужен.
