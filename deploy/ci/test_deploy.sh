@@ -40,7 +40,7 @@ fail() { echo "FAIL: $*"; cat "$T/out.txt"; exit 1; }
 # 1. Успех: копия → миграции → бэкенд → фронтенд, без отката.
 run ok || fail "успешная выкатка завершилась ошибкой"
 order=$(grep -nE "apply -f .*/(backup|migrate|app|frontend)\.yaml" "$T/log.ok" | sed 's/.*\///')
-[ "$(echo $order)" = "backup.yaml migrate.yaml app.yaml frontend.yaml" ] || fail "порядок: $order"
+[ "$(echo "$order" | tr '\n' ' ')" = "backup.yaml migrate.yaml app.yaml frontend.yaml " ] || fail "порядок: $order"
 grep -q "set image" "$T/log.ok" && fail "откат при успехе"
 
 # 2. Сбой миграций: поды не трогаются.

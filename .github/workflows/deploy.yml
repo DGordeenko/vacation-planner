@@ -116,7 +116,9 @@ jobs:
             --data-urlencode "subject_token=$id_token" \
             --data-urlencode "subject_token_type=urn:ietf:params:oauth:token-type:id_token" \
             | jq -r .access_token)
-          [ -n "$iam_token" ] && [ "$iam_token" != null ] || { echo "::error::Обмен токена не удался"; exit 1; }
+          if [ -z "$iam_token" ] || [ "$iam_token" = null ]; then
+            echo "::error::Обмен токена GitHub на IAM-токен не удался"; exit 1
+          fi
           echo "::add-mask::$iam_token"
           echo "$iam_token" | docker login cr.yandex --username iam --password-stdin
 

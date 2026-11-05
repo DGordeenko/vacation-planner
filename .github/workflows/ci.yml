@@ -67,7 +67,8 @@ jobs:
           SECURE_HSTS_SECONDS: "31536000"
           SILENCED_SYSTEM_CHECKS: security.W005,security.W008,security.W021
         run: |
-          export SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(60))")
+          SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(60))")
+          export SECRET_KEY
           python manage.py check --deploy --fail-level WARNING
 
   frontend:
@@ -108,7 +109,8 @@ jobs:
       # с миграциями и фронтенд с прокси; проверяем API через nginx.
       - name: Запуск через docker compose
         run: |
-          export SECRET_KEY=ci-compose-$(date +%s)-not-secret
+          SECRET_KEY=ci-compose-$(date +%s)-not-secret
+          export SECRET_KEY
           docker compose up -d --wait postgres backend frontend
           curl -fsS http://localhost:8080/api/health/
           curl -fsS http://localhost:8080/api/health/live/
@@ -123,8 +125,8 @@ jobs:
         if: failure()
         run: docker compose logs --no-color
 
-  # Синтаксис и выражения workflow: ошибка в deploy.yml иначе всплыла бы
-  # только при выкатке.
+  # Синтаксис и выражения workflow и скриптов выкатки: ошибка в deploy.yml
+  # иначе всплыла бы только при выкатке.
   workflows:
     name: GitHub Actions — workflow
     runs-on: ubuntu-latest
@@ -134,6 +136,8 @@ jobs:
         run: |
           curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz | tar xz actionlint
           ./actionlint -color
+      - name: shellcheck скриптов развёртывания
+        run: shellcheck deploy/ci/*.sh frontend/docker-entrypoint.d/*.sh
 
   kubernetes:
     name: Kubernetes — манифесты
