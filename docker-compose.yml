@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vacation}
       POSTGRES_USER: ${POSTGRES_USER:-vacation}
@@ -100,7 +100,7 @@ services:
   # хранение 14 дней. Восстановление — docs/16-backups.md.
   # Тот же образ, что у базы: версия pg_dump совпадает с версией сервера.
   backup:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
     entrypoint: ["/bin/sh", "/pg-backup.sh"]
     environment:
       PGHOST: postgres

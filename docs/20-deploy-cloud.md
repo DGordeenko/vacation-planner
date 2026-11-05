@@ -276,3 +276,18 @@ Django скрываются, чтобы источник был один.
   в ответах скрыта.
 - Образ — `nginx-unprivileged`: nginx работает от пользователя с UID 101,
   не от root.
+
+## 6. Образы
+
+- **Базовые образы закреплены по digest** (`python:3.12-slim@sha256:…`):
+  тег переписывается при каждом выпуске, а digest — нет, и одна ревизия
+  всегда собирается из одного и того же. Обновления digest, зависимостей
+  pip и npm, actions и образов compose предлагает **Dependabot**
+  (`.github/dependabot.yml`) еженедельными PR.
+- **`.dockerignore`** не пускает в образ `.env*`, ключи, локальные базы
+  (`db.sqlite3`, `testdata/`, дампы — в них бывают настоящие ПДн) и тесты.
+- **`HEALTHCHECK` в образах не задан** намеренно: площадки проверяют
+  контейнеры сами — Kubernetes пробами `/api/health/live/` и
+  `/api/health/ready/`, docker compose — своим `healthcheck`, Railway —
+  Healthcheck Path. Собственный `HEALTHCHECK` образа Kubernetes
+  игнорирует, а в compose он дублировал бы уже заданную проверку.

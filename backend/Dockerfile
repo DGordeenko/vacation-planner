@@ -1,5 +1,9 @@
+# Базовые образы закреплены по digest: тег 3.12-slim переписывается при
+# каждом выпуске, и одна и та же ревизия собиралась бы из разных образов.
+# Обновления digest предлагает Dependabot (.github/dependabot.yml).
+
 # --- Сборка зависимостей -------------------------------------------------
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim@sha256:e695ab189fa2d082b1c61c69a6b888a5adeca61ceeccad107b1ed2a125721a9e AS builder
 
 # Вход по Kerberos нужен не везде, а тянет системные библиотеки MIT Kerberos —
 # включается при сборке: docker build --build-arg WITH_KERBEROS=1 (docs/11-sso-setup.md).
@@ -20,7 +24,7 @@ RUN python -m venv /opt/venv \
     fi
 
 # --- Образ приложения ----------------------------------------------------
-FROM python:3.12-slim AS runtime
+FROM python:3.12-slim@sha256:e695ab189fa2d082b1c61c69a6b888a5adeca61ceeccad107b1ed2a125721a9e AS runtime
 
 ARG WITH_KERBEROS=0
 
@@ -47,10 +51,12 @@ COPY --chown=app:app . .
 # не импортирует представления, где такие ошибки обычно и проявляются.
 # DEMO_MODE_ENABLED=0 явно: с включённым демо проверка открыла бы файл
 # демо-базы и оставила его в образе от имени root (docs/15-demo-mode.md, разд. 7).
-RUN SECRET_KEY=build-only DEMO_MODE_ENABLED=0 python manage.py check
+# DATABASE_URL в памяти: иначе Django 6.1 при проверке подключался к базе
+# по умолчанию и оставлял в образе пустой /app/db.sqlite3.
+RUN SECRET_KEY=build-only DEMO_MODE_ENABLED=0 DATABASE_URL=sqlite:///:memory: python manage.py check
 
 # Статика собирается на этапе сборки: в рантайме том может быть только для чтения.
-RUN SECRET_KEY=build-only DEMO_MODE_ENABLED=0 python manage.py collectstatic --noinput
+RUN SECRET_KEY=build-only DEMO_MODE_ENABLED=0 DATABASE_URL=sqlite:///:memory: python manage.py collectstatic --noinput
 
 COPY --chown=app:app entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
