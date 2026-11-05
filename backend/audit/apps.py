@@ -8,7 +8,7 @@ class AuditConfig(AppConfig):
 
     def ready(self):
         from audit import recording
-        from company.models import CompanySettings, Holiday
+        from company.models import CompanySettings, Holiday, SettingVersion
         from employees.models import Employee, EmployeeTag, OrgUnit, Tag
         from schedule.models import (
             ApprovalStep,
@@ -56,3 +56,4 @@ class AuditConfig(AppConfig):
         recording.track(Holiday, label=lambda o: f"{o.date} {o.name}")
         recording.track(ValidationRule, label=lambda o: o.name)
         recording.track(CompanySettings, label=lambda o: "Настройки компании")
+        recording.track(SettingVersion, label=str, subject=lambda o: o.employee)

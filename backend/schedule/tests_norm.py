@@ -39,7 +39,7 @@ class IndividualNormTests(TestCase):
 
     def test_override_raises_balance_and_summary_norm(self):
         before = calculations.balance_on(self.user, date(2026, 12, 31))
-        self.post({"employee_id": str(self.user.id), "value": 31})
+        self.post({"employee_id": str(self.user.id), "value": 31, "effective_from": "2026-01"})
         self.user.refresh_from_db()
         after = calculations.balance_on(self.user, date(2026, 12, 31))
         self.assertEqual(before, Decimal("27.96"))  # 12 × 2,33

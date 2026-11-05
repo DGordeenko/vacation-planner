@@ -334,9 +334,10 @@ class AuditContractTests(TestCase):
 COMPANY_SETTINGS_FIELDS = {"annual_vacation_norm_days", "monthly_accrual_rate",
                            "approval_levels", "workday_hours",
                            "rvd_compensation_tracking_enabled", "overtime_limits_enabled",
-                           "overtime_limit_two_days_hours", "overtime_limit_year_hours"}
+                           "overtime_limit_two_days_hours", "overtime_limit_year_hours",
+                           "history"}
 VALIDATION_RULE_FIELDS = {"code", "name", "description", "is_enabled", "threshold_value",
-                          "approver_level"}
+                          "approver_level", "threshold_history"}
 
 
 class SettingsContractTests(TestCase):
@@ -439,7 +440,7 @@ class VacationNormContractTests(TestCase):
         body = client.post("/api/v1/settings/vacation-norms/",
                            {"employee_id": str(admin.id), "value": 31}, format="json").json()
         self.assertEqual({"company_norm", "employees"}, set(body))
-        self.assertEqual({"id", "name", "org_unit", "norm", "monthly_rate"},
+        self.assertEqual({"id", "name", "org_unit", "norm", "monthly_rate", "history"},
                          set(body["employees"][0]))
 
 

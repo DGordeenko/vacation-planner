@@ -14,10 +14,26 @@ from schedule.validators import TaskLinkField
 
 
 class ValidationRuleSerializer(serializers.ModelSerializer):
+    """Порог — на сегодня; история «с месяца» — в threshold_history."""
+
+    threshold_history = serializers.SerializerMethodField()
+
     class Meta:
         model = ValidationRule
-        fields = ["code", "name", "description", "is_enabled", "threshold_value", "approver_level"]
+        fields = ["code", "name", "description", "is_enabled", "threshold_value", "approver_level",
+                  "threshold_history"]
         read_only_fields = ["code", "name", "description"]
+
+    def get_threshold_history(self, obj):
+        from company import history
+        return history.rule_timeline(obj).rows()
+
+    def to_representation(self, instance):
+        from company import history
+        data = super().to_representation(instance)
+        if instance.threshold_value is not None:
+            data["threshold_value"] = str(history.rule_threshold(instance))
+        return data
 
     def validate_threshold_value(self, value):
         # У правил вроде «захват выходных» порога нет: число там ничего

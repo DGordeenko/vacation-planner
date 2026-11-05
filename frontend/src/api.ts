@@ -268,10 +268,13 @@ export const auditApi = {
 /** Настройки компании, пороги правил и оформление (релиз 1.2). */
 export const settingsApi = {
   get: () => request<CompanySettingsRow>("/settings/"),
-  save: (patch: Partial<CompanySettingsRow>) =>
+  removeHistory: <T>(params: { key: string; effective_from: string; rule_code?: string;
+    employee_id?: string }) =>
+    request<T>(`/settings/history/?${new URLSearchParams(params)}`, { method: "DELETE" }),
+  save: (patch: Partial<CompanySettingsRow> & { effective_from?: string }) =>
     request<CompanySettingsRow>("/settings/", { method: "PATCH", body: JSON.stringify(patch) }),
   rules: () => request<Paginated<ValidationRuleRow>>("/validation-rules/?page_size=100"),
-  saveRule: (code: string, patch: Partial<ValidationRuleRow>) =>
+  saveRule: (code: string, patch: Partial<ValidationRuleRow> & { effective_from?: string }) =>
     request<ValidationRuleRow>(`/validation-rules/${code}/`,
       { method: "PATCH", body: JSON.stringify(patch) }),
   rvdTracking: () => request<RvdTrackingOverrides>("/settings/rvd-tracking/"),
@@ -279,9 +282,11 @@ export const settingsApi = {
     request<RvdTrackingOverrides>("/settings/rvd-tracking/",
       { method: "POST", body: JSON.stringify({ kind, id, value }) }),
   vacationNorms: () => request<VacationNormOverrides>("/settings/vacation-norms/"),
-  setVacationNorm: (employeeId: string, value: number | null) =>
-    request<VacationNormOverrides>("/settings/vacation-norms/",
-      { method: "POST", body: JSON.stringify({ employee_id: employeeId, value }) }),
+  setVacationNorm: (employeeId: string, value: number | null, effectiveFrom: string) =>
+    request<VacationNormOverrides>("/settings/vacation-norms/", {
+      method: "POST",
+      body: JSON.stringify({ employee_id: employeeId, value, effective_from: effectiveFrom }),
+    }),
   hrViewers: () => request<HrViewer[]>("/settings/hr-viewers/"),
   setHrViewer: (employeeId: string, value: boolean) =>
     request<HrViewer[]>("/settings/hr-viewers/",
