@@ -13,7 +13,14 @@ page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
 page.on("pageerror", (e) => errors.push(String(e)));
 
 await page.goto(url, { waitUntil: "networkidle" });
-await page.getByRole("heading", { name: "Добро пожаловать" }).waitFor({ timeout: 15000 });
+try {
+  // Заголовок экрана входа (frontend/src/components/Login.tsx).
+  await page.getByRole("heading", { name: "График отпусков" }).waitFor({ timeout: 15000 });
+} catch (e) {
+  console.error("Экран входа не отрисован. Текст страницы:\n" + (await page.innerText("body")).slice(0, 500));
+  console.error("Ошибки в консоли:\n" + errors.join("\n"));
+  throw e;
+}
 // Нарушения CSP браузер пишет в консоль как ошибки — они тоже провал.
 await browser.close();
 if (errors.length) {
