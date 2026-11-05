@@ -1,0 +1,56 @@
+# Учётная запись конвейера в кластере (docs/20-deploy-cloud.md, раздел 4).
+# Права — только в пространстве имён vacation и только на то, что конвейер
+# создаёт и обновляет. Ни секретов на чтение, ни прав на уровне кластера.
+# Применяет администратор кластера один раз:
+#   kubectl apply -f deploy/k8s/pipeline/deployer-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deployer
+  namespace: vacation
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deployer
+  namespace: vacation
+rules:
+  - apiGroups: [""]
+    resources: [configmaps, services, serviceaccounts]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: [""]
+    resources: [pods, pods/log]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, networkpolicies]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployer
+  namespace: vacation
+subjects:
+  - { kind: ServiceAccount, name: deployer, namespace: vacation }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: deployer }
+---
+# Долгоживущий токен для kubeconfig конвейера. Отозвать: удалить этот Secret
+# (будет создан новый токен при повторном apply).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: deployer-token
+  namespace: vacation
+  annotations:
+    kubernetes.io/service-account.name: deployer
+type: kubernetes.io/service-account-token

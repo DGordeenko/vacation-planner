@@ -13,6 +13,9 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
+          volumes:
+            - name: db-ca
+              configMap: { name: vacation-db-ca, optional: true }
           containers:
             - name: mail
               image: vacation-backend
@@ -20,6 +23,10 @@ spec:
               envFrom:
                 - configMapRef: { name: vacation-config }
                 - secretRef: { name: vacation-secrets }
+              # Корневой сертификат управляемой базы (DB_SSLROOTCERT=/app/certs/...).
+              # ConfigMap необязателен: без него каталог просто пуст.
+              volumeMounts:
+                - { name: db-ca, mountPath: /app/certs, readOnly: true }
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -34,6 +41,9 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
+          volumes:
+            - name: db-ca
+              configMap: { name: vacation-db-ca, optional: true }
           containers:
             - name: mail
               image: vacation-backend
@@ -41,3 +51,7 @@ spec:
               envFrom:
                 - configMapRef: { name: vacation-config }
                 - secretRef: { name: vacation-secrets }
+              # Корневой сертификат управляемой базы (DB_SSLROOTCERT=/app/certs/...).
+              # ConfigMap необязателен: без него каталог просто пуст.
+              volumeMounts:
+                - { name: db-ca, mountPath: /app/certs, readOnly: true }
