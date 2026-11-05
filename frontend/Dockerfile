@@ -16,7 +16,9 @@ RUN npm run build
 # Непривилегированный вариант официального образа: nginx работает от
 # пользователя nginx (UID 101), а не от root. Взлом nginx не даёт root
 # в контейнере; Kubernetes проверяет это (runAsNonRoot).
-FROM nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0 AS runtime
+# Стабильная ветка nginx (чётная): 1.27 больше не поддерживается, и в её
+# образе Trivy находил 61 исправимую уязвимость.
+FROM nginxinc/nginx-unprivileged:1.30-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03 AS runtime
 
 # NGINX_ENTRYPOINT_LOCAL_RESOLVERS: образ nginx при старте записывает
 # адреса DNS из /etc/resolv.conf в NGINX_LOCAL_RESOLVERS для директивы
