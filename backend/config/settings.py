@@ -438,3 +438,14 @@ else:
             'BACKEND': 'django.core.mail.backends.console.EmailBackend',
         },
     }
+
+
+# --- Журналы ------------------------------------------------------------
+# JSON в stdout — площадки разбирают его на поля без настройки; локально
+# (docker compose) — текст. Почта и секретные параметры маскируются
+# (config/logs.py). Стек ошибок 500 — только в журнал: при DEBUG=False
+# клиент его не получает.
+from config.logs import build as _build_logging  # noqa: E402
+
+LOG_FORMAT = os.environ.get("LOG_FORMAT", "json").strip().lower()
+LOGGING = _build_logging(LOG_FORMAT, os.environ.get("LOG_LEVEL", "INFO").strip().upper())

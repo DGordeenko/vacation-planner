@@ -157,6 +157,14 @@ jobs:
             test "$(echo "$h" | grep -ci '^X-Frame-Options:')" = 1 || { echo "X-Frame-Options дважды на $path"; exit 1; }
           done
           curl -sI http://localhost:8080/ | grep -qi '^Cache-Control: no-cache'
+          # Токены из адреса и Referer не попадают в журналы nginx и gunicorn.
+          curl -s -o /dev/null "http://localhost:8080/?invite=CI-SECRET-INVITE"
+          curl -s -o /dev/null -H "Referer: http://localhost:8080/?invite=CI-SECRET-REF" \
+            "http://localhost:8080/api/v1/auth/oidc/callback/?code=CI-SECRET-CODE&state=x"
+          sleep 1
+          if docker compose logs frontend backend | grep -q CI-SECRET; then
+            echo "Токен попал в журнал:"; docker compose logs frontend backend | grep CI-SECRET; exit 1
+          fi
           # Контейнер фронтенда работает не от root.
           test "$(docker compose exec -T frontend id -u)" != 0
           # Админка через nginx: без списка адресов закрыта, со списком —

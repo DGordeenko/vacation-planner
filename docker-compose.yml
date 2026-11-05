@@ -23,6 +23,8 @@ services:
       DEBUG: ${DEBUG:-False}
       # Локально — http://localhost, secure-cookie не сохранились бы.
       SECURE_COOKIES: ${SECURE_COOKIES:-False}
+      # Локально журнал удобнее читать текстом; на площадках — JSON
+      LOG_FORMAT: ${LOG_FORMAT:-text}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       DATABASE_URL: postgres://${POSTGRES_USER:-vacation}:${POSTGRES_PASSWORD:-vacation}@postgres:5432/${POSTGRES_DB:-vacation}
       PORT: 8000

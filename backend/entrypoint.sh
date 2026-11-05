@@ -86,9 +86,15 @@ if is_true "${MAIL_NOTIFICATIONS_ENABLED:-0}" && is_true "${MAIL_SCHEDULER:-1}";
     python manage.py mail_scheduler &
 fi
 
+# Журнал запросов без строки запроса (%(U)s — только путь) и без Referer:
+# в них бывают код входа Keycloak (?code=…) и токен приглашения
+# (?invite=… — страница, с которой пришёл запрос). Адрес клиента — из
+# X-Real-IP, который ставит nginx; %(h)s был бы адресом самого nginx.
+ACCESS_LOG_FORMAT='%({x-real-ip}i)s "%(m)s %(U)s" %(s)s %(B)s %(M)sms'
 exec gunicorn config.wsgi:application \
     --bind "0.0.0.0:${PORT:-8000}" \
     --workers "${GUNICORN_WORKERS:-3}" \
     --timeout "${GUNICORN_TIMEOUT:-60}" \
     --access-logfile - \
+    --access-logformat "$ACCESS_LOG_FORMAT" \
     --error-logfile -

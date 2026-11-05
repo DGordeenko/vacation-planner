@@ -188,6 +188,7 @@ cd frontend && npm run lint && npx tsc -b && npm run build
 | `TRUSTED_PROXY_COUNT` | Число прокси перед бэкендом (по умолчанию 1 — nginx фронтенда) |
 | `*_FILE` | Секрет из файла вместо переменной: `SECRET_KEY_FILE`, `DATABASE_URL_FILE`, `EMAIL_HOST_PASSWORD_FILE`, `OIDC_CLIENT_SECRET_FILE`, `ADMIN_PASSWORD_FILE` и др. (`docs/20-deploy-cloud.md`, раздел 7) |
 | `SECRET_KEY_FALLBACKS` | Прежние ключи на время смены `SECRET_KEY` |
+| `LOG_FORMAT`, `LOG_LEVEL` | Журнал в stdout: `json` (по умолчанию) или `text`; почта и токены в журнале маскируются |
 | `RUN_MIGRATIONS` | `0` отключает миграции при старте контейнера |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Первый администратор, создаётся при старте, если его ещё нет. Подробно — `docs/14-initial-admin.md` |
 | `ADMIN_FULL_NAME`, `ADMIN_EMPLOYEE_NUMBER`, `ADMIN_HIRE_DATE` | Необязательные поля администратора, есть значения по умолчанию |
