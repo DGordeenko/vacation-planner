@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
@@ -69,7 +70,7 @@ router.register("tags", TagViewSet, basename="tag")
 router.register("schedule-approvals", ScheduleApprovalViewSet, basename="schedule-approval")
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path(f"{settings.DJANGO_ADMIN_PATH}/", admin.site.urls),
     path("api/health/", HealthView.as_view()),
     path("api/v1/auth/methods/", AuthMethodsView.as_view()),
     path("api/v1/auth/negotiate/", NegotiateView.as_view()),

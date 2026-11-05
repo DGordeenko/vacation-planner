@@ -36,6 +36,10 @@ ALLOWED_HOSTS = _env_list("ALLOWED_HOSTS", "localhost,127.0.0.1")
 
 CSRF_TRUSTED_ORIGINS = _env_list("CSRF_TRUSTED_ORIGINS")
 
+# Путь админки Django без слешей. Нестандартный путь отсекает часть
+# автоматических переборов; должен совпадать с DJANGO_ADMIN_PATH у nginx.
+DJANGO_ADMIN_PATH = os.environ.get("DJANGO_ADMIN_PATH", "admin").strip("/") or "admin"
+
 
 # Application definition
 

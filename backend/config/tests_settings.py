@@ -62,6 +62,14 @@ class DatabaseUrlTests(SimpleTestCase):
             _database_from_url("mysql://db/vacation")
 
 
+class AdminPathTests(SimpleTestCase):
+    def test_admin_under_configured_path(self):
+        """Путь админки из настройки: по нему nginx решает, что проксировать."""
+        from django.conf import settings
+        from django.urls import reverse
+        self.assertEqual(reverse("admin:login"), f"/{settings.DJANGO_ADMIN_PATH}/login/")
+
+
 class DemoDatabaseTests(SimpleTestCase):
     def test_disabled_demo_has_no_file(self):
         """Выключенное демо не создаёт файлов: проверки Django открывают все базы."""

@@ -20,6 +20,12 @@ spec:
             - { name: PORT, value: "8080" }
             # Без пути и без «/» в конце (frontend/nginx.conf)
             - { name: BACKEND_URL, value: "http://backend:8000" }
+            # Админка Django через nginx (docs/18-deploy-kubernetes.md).
+            # Путь — тот же, что у бэкенда; пустой список адресов — 403 всем.
+            - name: DJANGO_ADMIN_PATH
+              valueFrom: { configMapKeyRef: { name: vacation-config, key: DJANGO_ADMIN_PATH } }
+            - name: ADMIN_ALLOW_CIDRS
+              valueFrom: { configMapKeyRef: { name: vacation-config, key: ADMIN_ALLOW_CIDRS } }
           readinessProbe:
             httpGet: { path: /, port: 8080 }
           livenessProbe:

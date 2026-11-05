@@ -55,6 +55,7 @@ services:
       ADMIN_HIRE_DATE: ${ADMIN_HIRE_DATE:-}
       # Демо-режим, см. docs/15-demo-mode.md
       DEMO_MODE_ENABLED: ${DEMO_MODE_ENABLED:-False}
+      DJANGO_ADMIN_PATH: ${DJANGO_ADMIN_PATH:-admin}
       DEMO_DATABASE_URL: ${DEMO_DATABASE_URL:-}
       DEMO_LOAD_ON_START: ${DEMO_LOAD_ON_START:-1}
       DEMO_RESET_DAILY: ${DEMO_RESET_DAILY:-1}
@@ -79,6 +80,10 @@ services:
     environment:
       PORT: 8080
       BACKEND_URL: http://backend:8000
+      # Админка Django через nginx: пусто — закрыта (403). Локально открыть:
+      # ADMIN_ALLOW_CIDRS=0.0.0.0/0 в .env
+      DJANGO_ADMIN_PATH: ${DJANGO_ADMIN_PATH:-admin}
+      ADMIN_ALLOW_CIDRS: ${ADMIN_ALLOW_CIDRS:-}
     ports:
       - "${FRONTEND_PORT:-8080}:8080"
     depends_on:
