@@ -98,7 +98,11 @@ jobs:
       # Сборка образа бэкенда сама прогоняет manage.py check и collectstatic:
       # ошибка импорта ломает CI, а не запуск на площадке.
       - name: Образ бэкенда
-        run: docker build -t vacation-backend:ci backend
+        run: |
+          docker build -t vacation-backend:ci backend
+          # .dockerignore: ни тестов, ни локальных баз и .env в образе
+          docker run --rm --entrypoint sh vacation-backend:ci -c \
+            'test ! -e employees/tests.py && test ! -e config/tests_settings.py && test -z "$(find / -xdev \( -name "*.sqlite3" -o -name ".env*" \) -not -path "/proc/*" 2>/dev/null)"'
       - name: Образ бэкенда с Kerberos
         run: |
           docker build --build-arg WITH_KERBEROS=1 -t vacation-backend:krb backend
