@@ -1,0 +1,197 @@
+# Автоматическая выкатка после зелёного CI на main (docs/20-deploy-cloud.md).
+#
+# Одна схема для AWS, Huawei Cloud и Yandex Cloud: облако влияет только на
+# вход в реестр образов и в кластер. Сама выкатка — deploy/ci/deploy.sh.
+#
+# Выключено, пока в репозитории не задана переменная DEPLOY_ENABLED=true:
+# без подготовленного облака каждый push в main давал бы красный запуск.
+# Все адреса и идентификаторы — в GitHub Environment «production»,
+# не в репозитории.
+name: Deploy
+
+on:
+  # Только после успешного CI: выкатывается проверенный коммит.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # Повтор или откат на конкретную версию: тег уже собранных образов.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Тег образов (sha-1a2b3c4). Пусто — собрать текущий main"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# Две выкатки одновременно перепутали бы миграции и откат. Текущая не
+# отменяется: прерванная на середине выкатка хуже очереди.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Выкатка
+    if: >-
+      vars.DEPLOY_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # Правила защиты Environment: только ветка main, по желанию — ручное
+    # подтверждение. Секреты и переменные площадки живут здесь.
+    environment:
+      name: production
+      url: ${{ vars.APP_URL }}
+    permissions:
+      contents: read
+      id-token: write   # OIDC: вход в облако без постоянных ключей
+    env:
+      REGISTRY_PROVIDER: ${{ vars.REGISTRY_PROVIDER }}   # aws | yandex | password
+      CLUSTER_AUTH: ${{ vars.CLUSTER_AUTH }}             # kubeconfig | aws-eks
+      BACKEND_IMAGE: ${{ vars.REGISTRY }}/backend
+      FRONTEND_IMAGE: ${{ vars.REGISTRY }}/frontend
+      APP_URL: ${{ vars.APP_URL }}
+      APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+      INGRESS_CLASS: ${{ vars.INGRESS_CLASS }}
+      INGRESS_ANNOTATIONS: ${{ vars.INGRESS_ANNOTATIONS }}
+      CONFIG_OVERRIDES: ${{ vars.CONFIG_OVERRIDES }}
+      PG_CLIENT_IMAGE: ${{ vars.PG_CLIENT_IMAGE }}
+      BACKUP_ENABLED: ${{ vars.BACKUP_ENABLED || '1' }}
+      SMOKE_ADMIN_CODE: ${{ vars.SMOKE_ADMIN_CODE || '403' }}
+      ADMIN_PATH: ${{ vars.ADMIN_PATH || 'admin' }}
+      KUSTOMIZE_VERSION: "5.4.3"
+    steps:
+      - name: Версия
+        id: version
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=sha-${HEAD_SHA::7}" >> "$GITHUB_OUTPUT"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      # Код того коммита, что прошёл CI, а не того, что окажется в main
+      # к моменту запуска.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ steps.version.outputs.sha }}
+
+      # --- Вход в облако ----------------------------------------------------
+      - name: AWS — вход по OIDC
+        if: env.REGISTRY_PROVIDER == 'aws' || env.CLUSTER_AUTH == 'aws-eks'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: AWS — вход в ECR
+        if: env.REGISTRY_PROVIDER == 'aws'
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+
+      # Workload Identity Federation: токен задачи GitHub обменивается на
+      # IAM-токен сервисного аккаунта (живёт не дольше 12 часов).
+      - name: Yandex Cloud — вход по OIDC в Container Registry
+        if: env.REGISTRY_PROVIDER == 'yandex'
+        env:
+          SA_ID: ${{ vars.YC_SERVICE_ACCOUNT_ID }}
+          AUDIENCE: ${{ vars.YC_OIDC_AUDIENCE }}
+        run: |
+          set -euo pipefail
+          id_token=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$(jq -rn --arg a "$AUDIENCE" '$a|@uri')" | jq -r .value)
+          iam_token=$(curl -fsS -X POST https://auth.yandex.cloud/oauth/token \
+            --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+            --data-urlencode "requested_token_type=urn:ietf:params:oauth:token-type:access_token" \
+            --data-urlencode "audience=$SA_ID" \
+            --data-urlencode "subject_token=$id_token" \
+            --data-urlencode "subject_token_type=urn:ietf:params:oauth:token-type:id_token" \
+            | jq -r .access_token)
+          [ -n "$iam_token" ] && [ "$iam_token" != null ] || { echo "::error::Обмен токена не удался"; exit 1; }
+          echo "::add-mask::$iam_token"
+          echo "$iam_token" | docker login cr.yandex --username iam --password-stdin
+
+      # Любой реестр с логином и паролем: Huawei SWR (долговременная команда
+      # входа отдельного IAM-пользователя только с правом push), Harbor и т. п.
+      - name: Реестр — вход по логину
+        if: env.REGISTRY_PROVIDER == 'password'
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          echo "$REGISTRY_PASSWORD" | docker login "${{ vars.REGISTRY_HOST }}" \
+            --username "$REGISTRY_USERNAME" --password-stdin
+
+      # --- Образы -----------------------------------------------------------
+      # Тег — короткий SHA коммита; latest не используется: по тегу всегда
+      # видно, какой код работает, и на него можно откатиться.
+      - name: Сборка и публикация образов
+        if: steps.version.outputs.build == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          docker build -t "$BACKEND_IMAGE:$TAG" backend
+          docker build -t "$FRONTEND_IMAGE:$TAG" frontend
+          docker push "$BACKEND_IMAGE:$TAG"
+          docker push "$FRONTEND_IMAGE:$TAG"
+
+      - name: Образы указанной версии есть в реестре
+        if: steps.version.outputs.build == 'false'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          docker manifest inspect "$BACKEND_IMAGE:$TAG" > /dev/null
+          docker manifest inspect "$FRONTEND_IMAGE:$TAG" > /dev/null
+
+      # --- Вход в кластер ---------------------------------------------------
+      # kubeconfig сервисного аккаунта deployer (deploy/k8s/pipeline/
+      # deployer-rbac.yaml) — одинаково для EKS, CCE и Managed Kubernetes.
+      - name: Кластер — kubeconfig
+        if: env.CLUSTER_AUTH == 'kubeconfig'
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: |
+          mkdir -p ~/.kube
+          printf '%s' "$KUBECONFIG_DATA" > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Кластер — EKS по OIDC
+        if: env.CLUSTER_AUTH == 'aws-eks'
+        run: aws eks update-kubeconfig --name "${{ vars.EKS_CLUSTER }}" --region "${{ vars.AWS_REGION }}"
+
+      - name: kustomize
+        run: |
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
+            | tar xz -C /usr/local/bin kustomize
+          kubectl version --client
+          kubectl -n vacation get deployment backend frontend --ignore-not-found
+
+      # --- Выкатка ----------------------------------------------------------
+      - name: Манифесты
+        env:
+          IMAGE_TAG: ${{ steps.version.outputs.tag }}
+        run: python3 deploy/ci/render.py "$RUNNER_TEMP/rendered"
+
+      - name: Копия базы → миграции → бэкенд → фронтенд → проверка
+        run: deploy/ci/deploy.sh "$RUNNER_TEMP/rendered"
+
+      - name: Итог
+        if: always()
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          {
+            echo "### Выкатка ${TAG}"
+            echo "- Адрес: ${APP_URL}"
+            echo "- Повторить или откатиться: Actions → Deploy → Run workflow, тег \`${TAG}\` или предыдущий"
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f ~/.kube/config
