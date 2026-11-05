@@ -26,6 +26,8 @@ spec:
               valueFrom: { configMapKeyRef: { name: vacation-config, key: DJANGO_ADMIN_PATH } }
             - name: ADMIN_ALLOW_CIDRS
               valueFrom: { configMapKeyRef: { name: vacation-config, key: ADMIN_ALLOW_CIDRS } }
+            - name: TRUSTED_PROXY_CIDRS
+              valueFrom: { configMapKeyRef: { name: vacation-config, key: TRUSTED_PROXY_CIDRS } }
           readinessProbe:
             httpGet: { path: /, port: 8080 }
           livenessProbe:

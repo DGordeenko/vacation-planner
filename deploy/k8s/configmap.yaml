@@ -19,6 +19,9 @@ data:
   # nginx, через запятую. Пусто — закрыта; доступ — kubectl port-forward.
   DJANGO_ADMIN_PATH: "admin"
   ADMIN_ALLOW_CIDRS: ""
+  # Подсети ingress-контроллера/балансировщика: от них nginx фронтенда
+  # берёт адрес клиента из X-Forwarded-For. Сузить до своих подсетей.
+  TRUSTED_PROXY_CIDRS: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10"
   # TLS к внешней базе (docs/18-deploy-kubernetes.md, раздел 1). Для базы
   # внутри кластера оставить пустыми; для управляемой — verify-full и путь
   # к сертификату из тома vacation-db-ca.

@@ -86,6 +86,8 @@ services:
       # ADMIN_ALLOW_CIDRS=0.0.0.0/0 в .env
       DJANGO_ADMIN_PATH: ${DJANGO_ADMIN_PATH:-admin}
       ADMIN_ALLOW_CIDRS: ${ADMIN_ALLOW_CIDRS:-}
+      # Пусто в .env — значение из образа (частные сети)
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,fc00::/7}
     ports:
       - "${FRONTEND_PORT:-8080}:8080"
     depends_on:
