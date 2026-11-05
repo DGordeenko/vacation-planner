@@ -1,0 +1,20 @@
+# Заголовки безопасности для каждого ответа. Подключается в каждом location:
+# nginx не наследует add_header сервера в location, где есть свой add_header,
+# и заголовки молча пропадали бы у кэшируемых файлов.
+# «always» — заголовки и в ответах с ошибкой (403 админки, 404, 502).
+
+# CSP: всё только со своего домена. Исключения:
+# - style-src 'unsafe-inline' — атрибуты style в страницах админки Django;
+# - fonts.googleapis.com / fonts.gstatic.com — шрифт IBM Plex Sans, пока он
+#   не перенесён в локальные файлы (блок 3.5 плана подготовки к облаку);
+# - CSP_CONNECT_SRC — адрес API, если он на другом домене (VITE_API_BASE_URL).
+# Вход через Keycloak — переход по адресу, а не запрос из скрипта:
+# connect-src его не касается.
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ${CSP_CONNECT_SRC}; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;
+add_header Referrer-Policy "same-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
+# 0 — выключено (по умолчанию): браузер запоминает HSTS на весь срок,
+# включать после проверки, что домен стабильно работает по HTTPS.
+add_header Strict-Transport-Security "max-age=${HSTS_MAX_AGE}" always;

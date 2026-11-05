@@ -116,6 +116,19 @@ jobs:
           curl -fsS http://localhost:8080/api/health/live/
           curl -fsS http://localhost:8080/api/health/ready/
           curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
+          # Заголовки безопасности nginx: на странице, на API и на ошибке.
+          for path in / /api/health/ /admin/login/; do
+            h=$(curl -s -D - -o /dev/null "http://localhost:8080$path")
+            for name in Content-Security-Policy X-Content-Type-Options X-Frame-Options \
+                        Referrer-Policy Permissions-Policy Strict-Transport-Security; do
+              echo "$h" | grep -qi "^$name:" || { echo "нет $name на $path"; exit 1; }
+            done
+            echo "$h" | grep -qi '^Server: nginx/' && { echo "версия nginx видна на $path"; exit 1; }
+            test "$(echo "$h" | grep -ci '^X-Frame-Options:')" = 1 || { echo "X-Frame-Options дважды на $path"; exit 1; }
+          done
+          curl -sI http://localhost:8080/ | grep -qi '^Cache-Control: no-cache'
+          # Контейнер фронтенда работает не от root.
+          test "$(docker compose exec -T frontend id -u)" != 0
           # Админка через nginx: без списка адресов закрыта, со списком —
           # страница входа Django, а не SPA.
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/admin/login/)" = 403

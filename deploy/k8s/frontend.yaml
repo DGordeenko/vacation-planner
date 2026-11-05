@@ -11,6 +11,10 @@ spec:
     metadata:
       labels: { app: vacation, component: frontend }
     spec:
+      # Образ nginx-unprivileged: пользователь nginx, UID 101.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
       containers:
         - name: frontend
           image: vacation-frontend
@@ -18,7 +22,7 @@ spec:
             - containerPort: 8080
           env:
             - { name: PORT, value: "8080" }
-            # Без пути и без «/» в конце (frontend/nginx.conf)
+            # Без пути и без «/» в конце (frontend/nginx/default.conf.template)
             - { name: BACKEND_URL, value: "http://backend:8000" }
             # Админка Django через nginx (docs/18-deploy-kubernetes.md).
             # Путь — тот же, что у бэкенда; пустой список адресов — 403 всем.
