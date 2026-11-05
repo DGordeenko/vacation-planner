@@ -12,7 +12,7 @@
 
 ## Состояние проекта
 
-В репозитории лежит работающая реализация: 514 проходящих тестов на бэкенде,
+В репозитории лежит работающая реализация: 551 проходящий тест на бэкенде,
 собирающийся фронтенд. **Сервер** реализует весь объём релиза 1 и большую
 часть релиза 2: актуализацию графика, отгулы, внеплановые отсутствия,
 доменную аутентификацию, почтовые уведомления. **Интерфейс** покрывает
@@ -29,13 +29,21 @@
 работают только через интерфейс.
 
 CI (`.github/workflows/ci.yml`) на каждый push в `main` и PR: линтеры (ruff,
-ESLint), тесты бэкенда на PostgreSQL, проверка несозданных миграций, типы
-и сборка фронтенда, сборка образов и запуск через `docker compose`, проверка
-манифестов Kubernetes (`deploy/k8s/`) по схемам. Поддерживаются три способа
-развёртывания — Docker, Kubernetes, Railway — из одних и тех же образов.
-Инструкции: Docker — `README.md`, Railway — `docs/17-deploy-railway.md`,
-Kubernetes — `docs/18-deploy-kubernetes.md`; резервное копирование —
-`docs/16-backups.md`.
+ESLint), тесты бэкенда на PostgreSQL, проверка несозданных миграций,
+`manage.py check --deploy`, типы и сборка фронтенда; сборка всех образов,
+их сканирование (Trivy) и SBOM; запуск через `docker compose` с проверкой
+заголовков, журналов, браузерной проверкой интерфейса, резервной копией
+и файловой системой только для чтения; pip-audit, npm audit, gitleaks,
+actionlint, shellcheck; проверка манифестов Kubernetes и логики выкатки.
+Зависимости обновляет Dependabot. После зелёного CI на `main` workflow
+`.github/workflows/deploy.yml` выкатывает версию в управляемый Kubernetes
+(AWS, Huawei Cloud, Yandex Cloud); включается переменной `DEPLOY_ENABLED`.
+
+Поддерживаются способы развёртывания Docker, Kubernetes, Railway и облако —
+из одних и тех же образов. Инструкции: Docker — `README.md`, Railway —
+`docs/17-deploy-railway.md`, Kubernetes — `docs/18-deploy-kubernetes.md`,
+облако и безопасность — `docs/20-deploy-cloud.md`, переменные окружения —
+`docs/21-configuration.md`, резервное копирование — `docs/16-backups.md`.
 
 Не сделано по функциональности: экспорт графика, мобильное приложение. Загрузка графика отпусков из CSV — в долгосрочном
 бэклоге, не планируется.
@@ -115,7 +123,7 @@ docs/        документация, задания на этапы в docs/ta
 
 ```bash
 cd backend && pip install -r requirements-dev.txt
-cd backend && ruff check . && python manage.py test        # 514 тестов
+cd backend && ruff check . && python manage.py test        # 551 тест
 cd frontend && npm run lint && npx tsc -b && npm run build
 ```
 

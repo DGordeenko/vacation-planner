@@ -259,7 +259,7 @@ middleware — иначе все изменения записывались б�
 ## Проверка
 
 ```bash
-cd backend && python manage.py test     # 514 тестов
+cd backend && python manage.py test     # 551 тест
 cd frontend && npx tsc -b && npm run build
 ```
 
