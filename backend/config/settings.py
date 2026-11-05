@@ -194,7 +194,7 @@ def _database_from_url(url):
     if scheme not in ("postgres", "postgresql"):
         raise ValueError(f"Неподдерживаемая схема в DATABASE_URL: {parsed.scheme}")
 
-    return {
+    config = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": unquote(parsed.path.lstrip("/")),
         "USER": unquote(parsed.username or ""),
@@ -203,6 +203,48 @@ def _database_from_url(url):
         "PORT": str(parsed.port or ""),
         "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "60")),
     }
+    options = _libpq_options(parsed.query)
+    if options:
+        config["OPTIONS"] = options
+    return config
+
+
+# Параметры libpq, которые принимаются из строки запроса DATABASE_URL.
+# Раньше строка запроса отбрасывалась целиком, и TLS к управляемой базе
+# (sslmode=verify-full + корневой сертификат провайдера) было не включить.
+# Список закрытый: опечатка или посторонний параметр останавливают запуск,
+# а не уходят в libpq молча.
+_LIBPQ_PARAMS = frozenset({
+    "sslmode", "sslrootcert", "sslcert", "sslkey", "sslcrl",
+    "target_session_attrs", "connect_timeout", "application_name",
+    "keepalives", "keepalives_idle", "keepalives_interval", "keepalives_count",
+    "options",
+})
+_SSLMODES = ("disable", "allow", "prefer", "require", "verify-ca", "verify-full")
+
+
+def _libpq_options(query):
+    """Строка запроса DATABASE_URL плюс DB_SSLMODE/DB_SSLROOTCERT → OPTIONS.
+
+    Переменные окружения сильнее параметров в адресе: адрес часто выдаёт
+    платформа целиком, а режим TLS удобнее задать отдельно.
+    """
+    from urllib.parse import parse_qsl
+
+    options = {}
+    for key, value in parse_qsl(query, keep_blank_values=True):
+        if key not in _LIBPQ_PARAMS:
+            raise ValueError(f"Неподдерживаемый параметр в DATABASE_URL: {key}")
+        options[key] = value
+    for key, env in (("sslmode", "DB_SSLMODE"), ("sslrootcert", "DB_SSLROOTCERT")):
+        value = os.environ.get(env, "").strip()
+        if value:
+            options[key] = value
+    if "sslmode" in options and options["sslmode"] not in _SSLMODES:
+        raise ValueError(f"Неизвестный sslmode: {options['sslmode']}")
+    if "connect_timeout" in options:
+        int(options["connect_timeout"])  # не число — ошибка сразу при старте
+    return options
 
 
 # Без DATABASE_URL работает локально на SQLite: так прогоняются тесты

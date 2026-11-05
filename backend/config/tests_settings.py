@@ -1,7 +1,10 @@
 """Разбор адреса базы данных из переменной окружения."""
 
-from django.test import SimpleTestCase
+from unittest import mock
 
+from django.test import SimpleTestCase, override_settings
+
+from config.checks import check_database_tls
 from config.settings import DEMO_SQLITE_PATH, _database_from_url, _demo_database
 
 
@@ -22,6 +25,38 @@ class DatabaseUrlTests(SimpleTestCase):
                           config["PORT"], config["NAME"]),
                          ("user", "p@ss", "db", "5433", "vacation"))
 
+    def test_postgres_tls_params(self):
+        config = _database_from_url(
+            "postgres://u:p@h1,h2:6432/db?sslmode=verify-full"
+            "&sslrootcert=/app/certs/root.crt&target_session_attrs=read-write&connect_timeout=5")
+        self.assertEqual(config["OPTIONS"], {
+            "sslmode": "verify-full", "sslrootcert": "/app/certs/root.crt",
+            "target_session_attrs": "read-write", "connect_timeout": "5"})
+
+    def test_no_query_no_options(self):
+        """Без параметров OPTIONS не появляется: локальный запуск как раньше."""
+        with mock.patch.dict("os.environ", {"DB_SSLMODE": "", "DB_SSLROOTCERT": ""}):
+            self.assertNotIn("OPTIONS", _database_from_url("postgres://u:p@db/x"))
+
+    def test_env_overrides_url(self):
+        env = {"DB_SSLMODE": "verify-full", "DB_SSLROOTCERT": "/certs/ca.crt"}
+        with mock.patch.dict("os.environ", env):
+            config = _database_from_url("postgres://u:p@db/x?sslmode=prefer")
+        self.assertEqual(config["OPTIONS"],
+                         {"sslmode": "verify-full", "sslrootcert": "/certs/ca.crt"})
+
+    def test_unknown_param_rejected(self):
+        with self.assertRaises(ValueError):
+            _database_from_url("postgres://u:p@db/x?sslmod=require")
+
+    def test_bad_sslmode_rejected(self):
+        with self.assertRaises(ValueError):
+            _database_from_url("postgres://u:p@db/x?sslmode=on")
+
+    def test_bad_timeout_rejected(self):
+        with self.assertRaises(ValueError):
+            _database_from_url("postgres://u:p@db/x?connect_timeout=abc")
+
     def test_unknown_scheme_rejected(self):
         with self.assertRaises(ValueError):
             _database_from_url("mysql://db/vacation")
@@ -41,3 +76,17 @@ class DemoDatabaseTests(SimpleTestCase):
 
     def test_enabled_demo_uses_url(self):
         self.assertEqual(_demo_database(True, "postgres://u:p@db/demo")["NAME"], "demo")
+
+
+def _ids(**db):
+    base = {"ENGINE": "django.db.backends.postgresql", "NAME": "x"}
+    with override_settings(DATABASES={"default": {**base, **db}}):
+        return {m.id for m in check_database_tls(None)}
+
+
+class DatabaseTlsCheckTests(SimpleTestCase):
+    def test_warns_without_verify_full(self):
+        self.assertIn("vacation.W001", _ids(OPTIONS={"sslmode": "require"}))
+
+    def test_quiet_with_verify_full(self):
+        self.assertNotIn("vacation.W001", _ids(OPTIONS={"sslmode": "verify-full"}))

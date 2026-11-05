@@ -11,6 +11,11 @@ data:
   # Несколько реплик: миграции — Job, почта и сброс демо — CronJob,
   # поэтому фоновые процессы в самих подах выключены.
   RUN_MIGRATIONS: "0"
+  # TLS к внешней базе (docs/18-deploy-kubernetes.md, раздел 1). Для базы
+  # внутри кластера оставить пустыми; для управляемой — verify-full и путь
+  # к сертификату из тома vacation-db-ca.
+  DB_SSLMODE: ""
+  DB_SSLROOTCERT: ""
   MAIL_SCHEDULER: "0"
   DEMO_RESET_DAILY: "0"
   DEMO_MODE_ENABLED: "False"
