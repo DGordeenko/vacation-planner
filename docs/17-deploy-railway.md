@@ -73,7 +73,7 @@ Railway — одна из трёх поддерживаемых площадок
 ## 4. Настройки сервисов
 
 **backend:**
-- Settings → Deploy → Healthcheck Path: `/api/health/`.
+- Settings → Deploy → Healthcheck Path: `/api/health/` (то же, что `/api/health/ready/`: проверяет базу; `/api/health/live/` — только процесс).
 - Settings → Networking: публичный домен не нужен. Порт для внутренней
   сети — 8000, его слушает gunicorn.
 - Реплика одна. Миграции применяются при старте контейнера, и при нескольких

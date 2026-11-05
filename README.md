@@ -198,7 +198,7 @@ cd frontend && npm run lint && npx tsc -b && npm run build
 Образы переносимые: порт и настройки берутся только из переменных окружения.
 
 **Kubernetes.** Манифесты — `deploy/k8s/` (`kubectl apply -k deploy/k8s`):
-миграции отдельным Job, почта — CronJob, пробы на `/api/health/`. Пошагово —
+миграции отдельным Job, почта — CronJob, пробы на `/api/health/live/` и `/api/health/ready/`. Пошагово —
 `docs/18-deploy-kubernetes.md`.
 
 **Railway.** По сервису на папку плюс PostgreSQL. Фронтенд проксирует API

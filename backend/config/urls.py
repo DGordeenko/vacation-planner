@@ -5,7 +5,7 @@ from rest_framework.routers import DefaultRouter
 
 from audit.views import AuditLogViewSet
 from company.views import HolidayAdminViewSet
-from config.health import HealthView
+from config.health import HealthView, LiveView
 from demo.views import DemoLoginView
 from employees.tags import EmployeeSearchView, TagViewSet
 from employees.views import (
@@ -72,6 +72,8 @@ router.register("schedule-approvals", ScheduleApprovalViewSet, basename="schedul
 urlpatterns = [
     path(f"{settings.DJANGO_ADMIN_PATH}/", admin.site.urls),
     path("api/health/", HealthView.as_view()),
+    path("api/health/ready/", HealthView.as_view()),
+    path("api/health/live/", LiveView.as_view()),
     path("api/v1/auth/methods/", AuthMethodsView.as_view()),
     path("api/v1/auth/negotiate/", NegotiateView.as_view()),
     path("api/v1/auth/oidc/start/", OidcStartView.as_view()),
