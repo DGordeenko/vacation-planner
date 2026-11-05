@@ -1,0 +1,11 @@
+name: tmp-digests
+on: push
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          for i in node:26-alpine; do
+            echo "DIGEST $i $(docker buildx imagetools inspect "$i" --format '{{json .Manifest.Digest}}')"
+          done
+          docker run --rm node:26-alpine node -v | sed 's/^/DIGEST ver /'

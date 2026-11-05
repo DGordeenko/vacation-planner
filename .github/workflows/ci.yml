@@ -177,6 +177,15 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/admin/login/)" = 403
           ADMIN_ALLOW_CIDRS=0.0.0.0/0 docker compose up -d --wait frontend
           curl -fsS http://localhost:8080/admin/login/ | grep -q csrfmiddlewaretoken
+      # Интерфейс в настоящем браузере: экран входа отрисован, в консоли
+      # нет ошибок (в том числе нарушений CSP).
+      - name: Браузерная проверка интерфейса
+        run: |
+          mkdir -p /tmp/ui && cd /tmp/ui && npm init -y > /dev/null
+          npm install --no-audit --no-fund playwright@1.65.0
+          npx playwright install --with-deps chromium
+          cp "$GITHUB_WORKSPACE/deploy/ci/smoke-ui.mjs" .
+          node smoke-ui.mjs http://localhost:8080
       # Резервная копия на настоящей базе: зашифрованный дамп должен
       # расшифровываться закрытым ключом и читаться pg_restore.
       - name: Резервная копия с шифрованием и восстановление
