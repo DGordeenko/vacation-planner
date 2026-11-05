@@ -8,8 +8,18 @@ map $http_x_forwarded_proto $forwarded_proto {
     ""      $scheme;
 }
 
+# Защита входа от перебора: запросов в минуту с одного адреса (адрес —
+# уже после realip). Django ограничивает попытки входа своим счётчиком,
+# но в памяти каждой реплики; nginx отсекает поток раньше, не нагружая
+# бэкенд. AUTH_RATE_LIMIT, AUTH_RATE_BURST — в Dockerfile.
+limit_req_zone $binary_remote_addr zone=auth:10m rate=${AUTH_RATE_LIMIT};
+limit_req_status 429;
+
 server {
     listen       ${PORT};
+    server_tokens off;   # версия nginx в ответах — подсказка для поиска уязвимостей
+    # Самая большая загрузка — кадровая выгрузка; больше — ошибка 413.
+    client_max_body_size ${CLIENT_MAX_BODY_SIZE};
     server_name  _;
     root         /usr/share/nginx/html;
 
@@ -34,7 +44,29 @@ server {
 
     # SPA: любой маршрут отдаёт index.html, маршрутизация на клиенте.
     location / {
+        include /etc/nginx/conf.d/security-headers.inc;
         try_files $uri $uri/ /index.html;
+    }
+
+    # index.html — каждый раз проверять: в нём ссылки на файлы новой версии.
+    location = /index.html {
+        include /etc/nginx/conf.d/security-headers.inc;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    # Файлы сборки Vite: в имени хеш содержимого, новая версия — новое имя.
+    # Кэш на год, без перепроверки.
+    location /assets/ {
+        include /etc/nginx/conf.d/security-headers.inc;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    # Вход по паролю, по ссылке-приглашению, демо и начало доменного входа.
+    location ~ ^/api/v1/auth/(login|accept-invitation|demo-login|oidc/start|negotiate)/ {
+        limit_req zone=auth burst=${AUTH_RATE_BURST} nodelay;
+        include /etc/nginx/conf.d/security-headers.inc;
+        include /etc/nginx/conf.d/proxy.inc;
     }
 
     # Проксирование на бэкенд: фронтенд и API живут на одном домене,
@@ -44,13 +76,8 @@ server {
     # цепочка от клиента: $proxy_add_x_forwarded_for дописывал бы к
     # присланному клиентом заголовку, и подделка доходила бы до Django.
     location /api/ {
-        proxy_pass         $backend;
-        proxy_http_version 1.1;
-        proxy_set_header   Host              $host;
-        proxy_set_header   X-Real-IP         $remote_addr;
-        proxy_set_header   X-Forwarded-For   $remote_addr;
-        proxy_set_header   X-Forwarded-Proto $forwarded_proto;
-        proxy_read_timeout 60s;
+        include /etc/nginx/conf.d/security-headers.inc;
+        include /etc/nginx/conf.d/proxy.inc;
     }
 
     # Админка Django. Без этого блока /admin/ уходил в SPA и показывал
@@ -59,17 +86,14 @@ server {
     # Путь настраивается (DJANGO_ADMIN_PATH) и должен совпадать с бэкендом.
     location /${DJANGO_ADMIN_PATH}/ {
         include            /etc/nginx/conf.d/admin-allow.inc;
-        proxy_pass         $backend;
-        proxy_http_version 1.1;
-        proxy_set_header   Host              $host;
-        proxy_set_header   X-Real-IP         $remote_addr;
-        proxy_set_header   X-Forwarded-For   $remote_addr;
-        proxy_set_header   X-Forwarded-Proto $forwarded_proto;
-        proxy_read_timeout 60s;
+        include /etc/nginx/conf.d/security-headers.inc;
+        include /etc/nginx/conf.d/proxy.inc;
     }
 
+    # Статика админки Django (WhiteNoise в бэкенде).
     location /static/ {
-        proxy_pass $backend;
+        include /etc/nginx/conf.d/security-headers.inc;
+        include /etc/nginx/conf.d/proxy.inc;
     }
 
     gzip              on;
