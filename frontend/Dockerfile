@@ -35,6 +35,14 @@ ENV PORT=8080 \
     AUTH_RATE_LIMIT=30r/m \
     AUTH_RATE_BURST=10
 
+# Исправления пакетов Alpine, вышедшие после сборки базового образа:
+# образ nginx пересобирается реже, чем выходят исправления (Trivy находил
+# в нём CRITICAL brotli и HIGH curl). Цена — сборка зависит от дня; версия
+# nginx и сам базовый образ при этом закреплены digest.
+USER root
+RUN apk upgrade --no-cache
+USER 101
+
 COPY --from=builder /build/dist /usr/share/nginx/html
 # Шаблоны: переменные окружения подставляются при старте, результат —
 # в /etc/nginx/conf.d (default.conf, security-headers.inc).
