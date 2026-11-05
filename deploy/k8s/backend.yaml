@@ -17,6 +17,10 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
       volumes:
+        # Корневая ФС только для чтения: записать можно лишь сюда
+        # (служебные файлы gunicorn, временные файлы Python).
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }   # на диске: туда же демо-база SQLite
         - name: db-ca
           configMap: { name: vacation-db-ca, optional: true }
       containers:
@@ -29,7 +33,12 @@ spec:
             - secretRef: { name: vacation-secrets }
           # Корневой сертификат управляемой базы (DB_SSLROOTCERT=/app/certs/...).
           # ConfigMap необязателен: без него каталог просто пуст.
+          # Подмена кода или установка инструментов во взломанном
+          # контейнере невозможны: файловая система только для чтения.
+          securityContext:
+            readOnlyRootFilesystem: true
           volumeMounts:
+            - { name: tmp, mountPath: /tmp }
             - { name: db-ca, mountPath: /app/certs, readOnly: true }
           env:
             - { name: PORT, value: "8000" }

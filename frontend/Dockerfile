@@ -47,7 +47,10 @@ COPY --from=builder /build/dist /usr/share/nginx/html
 # Шаблоны: переменные окружения подставляются при старте, результат —
 # в /etc/nginx/conf.d (default.conf, security-headers.inc).
 COPY nginx/default.conf.template nginx/security-headers.inc.template /etc/nginx/templates/
-COPY nginx/proxy.inc /etc/nginx/conf.d/proxy.inc
+# Не в conf.d: при корневой ФС только для чтения туда монтируется
+# временный том (конфигурация собирается при старте), и файл из образа
+# под ним бы пропал.
+COPY nginx/proxy.inc /etc/nginx/snippets/proxy.inc
 # Список адресов для админки собирается при старте контейнера.
 COPY docker-entrypoint.d/15-admin-allow.sh docker-entrypoint.d/16-trusted-proxies.sh /docker-entrypoint.d/
 

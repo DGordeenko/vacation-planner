@@ -13,6 +13,8 @@ spec:
     spec:
       restartPolicy: Never
       volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }   # на диске: туда же демо-база SQLite
         - name: db-ca
           configMap: { name: vacation-db-ca, optional: true }
       containers:
@@ -25,5 +27,8 @@ spec:
             - secretRef: { name: vacation-secrets }
           # Корневой сертификат управляемой базы (DB_SSLROOTCERT=/app/certs/...).
           # ConfigMap необязателен: без него каталог просто пуст.
+          securityContext:
+            readOnlyRootFilesystem: true
           volumeMounts:
+            - { name: tmp, mountPath: /tmp }
             - { name: db-ca, mountPath: /app/certs, readOnly: true }

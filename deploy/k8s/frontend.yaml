@@ -15,11 +15,24 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
+      volumes:
+        # Корневая ФС только для чтения. Писать nginx может лишь сюда:
+        # conf.d — конфигурация, собираемая при старте из переменных;
+        # /tmp — pid и временные файлы проксирования.
+        - name: conf
+          emptyDir: { medium: Memory, sizeLimit: 1Mi }
+        - name: tmp
+          emptyDir: { medium: Memory, sizeLimit: 64Mi }
       containers:
         - name: frontend
           image: vacation-frontend
           ports:
             - containerPort: 8080
+          securityContext:
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+            - { name: tmp, mountPath: /tmp }
           env:
             - { name: PORT, value: "8080" }
             # Без пути и без «/» в конце (frontend/nginx/default.conf.template)
