@@ -11,6 +11,10 @@ data:
   # Несколько реплик: миграции — Job, почта и сброс демо — CronJob,
   # поэтому фоновые процессы в самих подах выключены.
   RUN_MIGRATIONS: "0"
+  # HTTPS: TLS завершается на ingress. HSTS включать после проверки домена.
+  SECURE_HSTS_SECONDS: "0"
+  SECURE_SSL_REDIRECT: "False"
+  SILENCED_SYSTEM_CHECKS: "security.W005,security.W008,security.W021"
   # Админка Django: путь (без слешей) и адреса, которым она открыта через
   # nginx, через запятую. Пусто — закрыта; доступ — kubectl port-forward.
   DJANGO_ADMIN_PATH: "admin"

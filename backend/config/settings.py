@@ -340,6 +340,47 @@ STORAGES = {
 }
 
 
+# --- HTTPS и cookies ----------------------------------------------------
+# TLS завершается до приложения (балансировщик платформы или nginx), и без
+# заголовка X-Forwarded-Proto Django считал бы каждый запрос HTTP: ссылки
+# в письмах и редиректы вели бы на http://. Доверять заголовку безопасно,
+# пока приложение доступно только через прокси, который его выставляет
+# (nginx фронтенда, ingress) — напрямую бэкенд наружу не публикуется.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Cookies только по HTTPS. По умолчанию включено при DEBUG=False;
+# docker compose выключает (SECURE_COOKIES=False): локально он работает
+# по http://localhost, и с secure-cookie вход в админку не сохранялся бы.
+SECURE_COOKIES = _env_bool("SECURE_COOKIES", not DEBUG)
+SESSION_COOKIE_SECURE = SECURE_COOKIES
+CSRF_COOKIE_SECURE = SECURE_COOKIES
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+# Сессия Django нужна только админке; рабочий день, а не две недели.
+SESSION_COOKIE_AGE = int(os.environ.get("SESSION_COOKIE_AGE") or 12 * 3600)
+
+# HSTS по умолчанию выключен: включённый заголовок браузер помнит весь срок,
+# и ошибка с сертификатом домена сделала бы сайт недоступным. Включать
+# (например, 31536000) после проверки, что домен стабильно работает по HTTPS.
+SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS") or 0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", False)
+SECURE_HSTS_PRELOAD = False
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
+
+# Редирект на HTTPS обычно делает балансировщик. Если включить его здесь,
+# пробы платформы, которые ходят по HTTP напрямую в под, получали бы 301 —
+# поэтому пробы исключены.
+SECURE_SSL_REDIRECT = _env_bool("SECURE_SSL_REDIRECT", False)
+SECURE_REDIRECT_EXEMPT = [r"^api/health/"]
+
+# Предупреждения check --deploy, осознанно принятые для площадки
+# (через запятую, например security.W008). Список задаётся окружением,
+# а не здесь: на одной площадке исключение оправдано, на другой — нет.
+SILENCED_SYSTEM_CHECKS = _env_list("SILENCED_SYSTEM_CHECKS")
+
+
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 

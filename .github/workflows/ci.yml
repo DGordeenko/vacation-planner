@@ -54,6 +54,21 @@ jobs:
         run: python manage.py makemigrations --check --dry-run
       - name: Тесты
         run: python manage.py test --noinput
+      # Настройки безопасности в production-окружении. Значения — как на
+      # площадке, но не настоящие. Исключения (docs/20-deploy-cloud.md):
+      # W008 — на HTTPS перенаправляет балансировщик; W005, W021 — HSTS
+      # на поддомены и preload-список включаются только осознанно.
+      - name: manage.py check --deploy
+        env:
+          DEBUG: "False"
+          ALLOWED_HOSTS: vacation.example.com
+          DATABASE_URL: postgres://u:p@db.example.com/vacation?sslmode=verify-full
+          EMAIL_HOST: smtp.example.com
+          SECURE_HSTS_SECONDS: "31536000"
+          SILENCED_SYSTEM_CHECKS: security.W005,security.W008,security.W021
+        run: |
+          export SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(60))")
+          python manage.py check --deploy --fail-level WARNING
 
   frontend:
     name: Фронтенд — линтер, типы и сборка

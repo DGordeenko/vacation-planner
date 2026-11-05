@@ -21,6 +21,8 @@ services:
     environment:
       SECRET_KEY: ${SECRET_KEY:-dev-only-insecure-key-replace-in-production}
       DEBUG: ${DEBUG:-False}
+      # Локально — http://localhost, secure-cookie не сохранились бы.
+      SECURE_COOKIES: ${SECURE_COOKIES:-False}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       DATABASE_URL: postgres://${POSTGRES_USER:-vacation}:${POSTGRES_PASSWORD:-vacation}@postgres:5432/${POSTGRES_DB:-vacation}
       PORT: 8000
