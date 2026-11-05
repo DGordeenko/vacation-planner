@@ -124,7 +124,10 @@
 | reason_id | FK → AbsenceReason, nullable | Причина (только для `absence`) |
 | custom_reason_text | string, nullable | Текст при выборе причины «Другое» |
 | task_link | URL, nullable | Ссылка на задачу (для `rvd`/`overtime`) |
-| overtime_hours | decimal, nullable | Количество часов переработки (только для `overtime`) |
+| overtime_hours | decimal, nullable | Количество часов переработки (только для `overtime`); считается из периода работы |
+| work_time_from, work_time_to | time, nullable | Период сверхурочной работы в пределах дня (только для `overtime`) |
+| overtime_compensation | enum (`pay`, `day_off`), пусто | Компенсация сверхурочных: оплата по законодательству или отгул |
+| approval_stage | int, default 0 | Сверхурочные: сколько уровней цепочки (два вверх от сотрудника) уже согласовали |
 | rvd_compensation_type | enum (`day_off`, `payment`), nullable | Вид компенсации за работу в выходной день (только для `rvd`, при включённом учёте компенсации) |
 | extended_by_holiday_days | int, default 0 | На сколько дней продлён отпуск из-за праздников, попавших в период |
 | status | enum (`draft`, `pending_approval`, `approved`, `rejected`, `cancelled`) | Статус записи |

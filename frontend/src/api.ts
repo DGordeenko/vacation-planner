@@ -7,7 +7,8 @@
 
 import type {
   Absence, AbsenceReason, AbsenceSummary, AnnualSummary, AuditEntityType, AuditRow, CheckResult,
-  RvdCompensation, RvdRow, RvdTrackingOverrides, VacationNormOverrides, HrViewer, TimeOffBalance, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
+  RvdCompensation, RvdRow, RvdTrackingOverrides, VacationNormOverrides, HrViewer, Overtime, OvertimeCheck,
+  OvertimeInput, OvertimeReportRow, TimeOffBalance, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
   DemoRoleCode, EmployeeBrief, EmployeeImportReport, Invitation, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
   TeamEntryDetail, TeamScope,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
@@ -291,6 +292,39 @@ export const settingsApi = {
 
 /** Учёт времени сотрудника: часы отгулов, отгулы, внеплановые отсутствия.
     Проверки — серверные (validate), те же, что при сохранении. */
+/** Сверхурочные: часы, проверки и очередь согласования — на сервере. */
+export const overtimeApi = {
+  list: (params: { mine?: boolean; year?: number; month?: number } = {}) => {
+    const query = new URLSearchParams({ page_size: "200" });
+    if (params.mine) query.set("mine", "1");
+    if (params.year) query.set("year", String(params.year));
+    if (params.month) query.set("month", String(params.month));
+    return request<Paginated<Overtime>>(`/overtime/?${query}`);
+  },
+  check: (input: OvertimeInput) =>
+    request<OvertimeCheck>("/overtime/validate/", { method: "POST", body: JSON.stringify(input) }),
+  create: (input: OvertimeInput) =>
+    request<Overtime & { warnings: string[] }>("/overtime/",
+      { method: "POST", body: JSON.stringify(input) }),
+  cancel: (id: string) => request<void>(`/overtime/${id}/`, { method: "DELETE" }),
+  approve: (id: string) => request<Overtime>(`/overtime/${id}/approve/`, { method: "POST" }),
+  reject: (id: string, comment: string) =>
+    request<Overtime>(`/overtime/${id}/reject/`,
+      { method: "POST", body: JSON.stringify({ comment }) }),
+  report: (year: number, month: number | null) =>
+    request<OvertimeReportRow[]>(`/overtime/report/?year=${year}`
+      + (month ? `&month=${month}` : "")),
+  /** Файл отчёта: заголовок авторизации нужен, поэтому не обычной ссылкой. */
+  reportCsv: async (year: number, month: number | null) => {
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `${scheme} ${token}`;
+    const response = await fetch(`${BASE}/overtime/report/?year=${year}&export=csv`
+      + (month ? `&month=${month}` : ""), { headers });
+    if (!response.ok) throw new ApiError(response.status, "Не удалось выгрузить отчёт", null);
+    return response.blob();
+  },
+};
+
 export const timeOffApi = {
   balance: (employeeId: string) =>
     request<TimeOffBalance>(`/employees/${employeeId}/time-off-balance/`),

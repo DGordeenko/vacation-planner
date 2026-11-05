@@ -8,7 +8,7 @@
 
 import random
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 
 from django.core.management import call_command
 from django.db import transaction
@@ -19,7 +19,7 @@ from demo import data
 from demo.db import DEMO_ALIAS, demo_enabled, same_database_as_default, use_demo_database
 from employees.importers import import_employees
 from employees.models import Employee, Tag
-from schedule import approvals, calculations
+from schedule import approvals, calculations, overtime
 from schedule.management.commands.seed_demo import ABSENCE_REASONS, RULES
 from schedule.models import ScheduleApproval, ScheduleEntry, ValidationRule
 
@@ -224,7 +224,7 @@ def _plan_everyone_else(report):
 
 
 def _time_tracking_examples(admin):
-    """РВД с отгулом и больничный — чтобы разделы учёта времени не были пустыми."""
+    """РВД, больничный и сверхурочные — чтобы разделы учёта времени не были пустыми."""
     employee = Employee.objects.get(
         employee_number=data.ROLES_BY_CODE["employee"].employee_number)
     rvd = ScheduleEntry.objects.create(
@@ -242,4 +242,13 @@ def _time_tracking_examples(admin):
         record_type=ScheduleEntry.RecordType.ABSENCE,
         status=ScheduleEntry.Status.APPROVED,
         date_from=date(2026, 3, 16), date_to=date(2026, 3, 18), reason=sick)
+
+    # Сверхурочные: одни к оплате уже согласованы, другие ждут руководителя —
+    # чтобы у роли «Руководитель» было что решить, а у HR — что выгрузить.
+    overtime.create(employee, admin, date(2026, 10, 8), time(19, 0), time(21, 0),
+                    "https://jira.test-corp.example/browse/MON-430",
+                    ScheduleEntry.OvertimeCompensation.PAY)
+    overtime.create(employee, employee, date(2026, 10, 21), time(18, 0), time(20, 30),
+                    "https://jira.test-corp.example/browse/MON-447",
+                    ScheduleEntry.OvertimeCompensation.DAY_OFF)
 

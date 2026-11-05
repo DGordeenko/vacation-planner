@@ -399,7 +399,11 @@ SETTINGS_LIMITS = {
     "monthly_accrual_rate": (Decimal("0"), Decimal("10")),
     "approval_levels": (1, 5),
     "workday_hours": (Decimal("1"), Decimal("24")),
+    "overtime_limit_two_days_hours": (Decimal("1"), Decimal("48")),
+    "overtime_limit_year_hours": (Decimal("1"), Decimal("1000")),
 }
+# Флаги «да/нет» в настройках.
+SETTINGS_FLAGS = ["rvd_compensation_tracking_enabled", "overtime_limits_enabled"]
 
 
 def _settings_payload(row):
@@ -409,6 +413,9 @@ def _settings_payload(row):
         "approval_levels": row.approval_levels,
         "workday_hours": float(row.workday_hours),
         "rvd_compensation_tracking_enabled": row.rvd_compensation_tracking_enabled,
+        "overtime_limits_enabled": row.overtime_limits_enabled,
+        "overtime_limit_two_days_hours": float(row.overtime_limit_two_days_hours),
+        "overtime_limit_year_hours": float(row.overtime_limit_year_hours),
     }
 
 
@@ -443,12 +450,14 @@ class CompanySettingsView(APIView):
                 errors[field] = [f"Допустимо от {low} до {high}"]
                 continue
             setattr(row, field, value)
-        flag = request.data.get("rvd_compensation_tracking_enabled")
-        if flag is not None:
+        for name in SETTINGS_FLAGS:
+            flag = request.data.get(name)
+            if flag is None:
+                continue
             if not isinstance(flag, bool):
-                errors["rvd_compensation_tracking_enabled"] = ["Ожидается да или нет"]
+                errors[name] = ["Ожидается да или нет"]
             else:
-                row.rvd_compensation_tracking_enabled = flag
+                setattr(row, name, flag)
         if errors:
             return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
         row.save()

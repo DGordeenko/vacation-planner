@@ -224,6 +224,9 @@ export interface CompanySettingsRow {
   approval_levels: number;
   workday_hours: number;
   rvd_compensation_tracking_enabled: boolean;
+  overtime_limits_enabled: boolean;
+  overtime_limit_two_days_hours: number;
+  overtime_limit_year_hours: number;
 }
 
 export interface RvdTrackingOverrides {
@@ -394,6 +397,57 @@ export interface Decisions {
   approvals: ApprovalDecision[];
   exceptions: ExceptionDecision[];
   day_offs: DayOffDecision[];
+  overtime: Overtime[];
+}
+
+export type OvertimeCompensation = "pay" | "day_off";
+
+/** Сверхурочные. Часы считает сервер из периода работы. */
+export interface Overtime {
+  id: string;
+  employee: string;
+  employee_name: string;
+  employee_number: string;
+  org_unit: string | null;
+  date: string;
+  time_from: string;
+  time_to: string;
+  hours: number;
+  task_link: string;
+  compensation: OvertimeCompensation;
+  compensation_display: string;
+  status: "pending_approval" | "approved" | "rejected";
+  /** Кто решает сейчас; null — решение принято. */
+  waiting_for: string | null;
+  rejection_comment: string;
+  created_by: string;
+  created_by_name: string;
+  created_at: string;
+}
+
+export interface OvertimeInput {
+  employee?: string;
+  date: string;
+  time_from: string;
+  time_to: string;
+  task_link: string;
+  compensation: OvertimeCompensation;
+}
+
+export interface OvertimeCheck {
+  hours: number;
+  errors: string[];
+  /** Пределы ТК — только если контроль включён; сохранить всё равно можно. */
+  warnings: string[];
+}
+
+/** Строка отчёта к оплате — только поля для расчёта зарплаты. */
+export interface OvertimeReportRow {
+  full_name: string;
+  employee_number: string;
+  date: string;
+  day_type: string;
+  period: string;
 }
 
 export interface AbsenceReason {

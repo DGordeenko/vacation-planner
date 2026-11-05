@@ -33,25 +33,30 @@ export default function Settings({ branding, onBack, onBrandingChanged }: {
 }
 
 const COMPANY_FIELDS: {
-  key: keyof Omit<CompanySettingsRow, "rvd_compensation_tracking_enabled">;
+  key: keyof Omit<CompanySettingsRow, "rvd_compensation_tracking_enabled" | "overtime_limits_enabled">;
   label: string;
   hint: string;
   step: string;
 }[] = [
   { key: "annual_vacation_norm_days", label: "Право на отпуск в год, дн.", step: "1",
-    hint: "Право сотрудника на год по умолчанию (ст. 115 ТК РФ — 28). Своя норма у отдельных сотрудников задаётся в карточке." },
+    hint: "Право сотрудника на год по умолчанию (ст. 115 ТК РФ — 28). Своя норма у отдельных сотрудников — в блоке «Своя норма отпуска» ниже." },
   { key: "monthly_accrual_rate", label: "Начисление в месяц, дн.", step: "0.01",
     hint: "Обычно норма / 12: 28 → 2,33. Баланс считается заново из истории, поэтому новое значение меняет остатки всех сотрудников задним числом." },
   { key: "approval_levels", label: "Уровней согласования", step: "1",
     hint: "Сколько уровней руководства согласуют график (1–5). Действует для графиков, отправленных после изменения." },
   { key: "workday_hours", label: "Длина рабочего дня, ч", step: "0.1",
     hint: "Столько часов списывает один отгул." },
+  { key: "overtime_limit_two_days_hours", label: "Сверхурочные за два дня подряд, ч", step: "0.5",
+    hint: "Предел ст. 99 ТК РФ — 4 часа. Проверяется, если включён контроль ниже." },
+  { key: "overtime_limit_year_hours", label: "Сверхурочные за год, ч", step: "1",
+    hint: "Предел ст. 99 ТК РФ — 120 часов." },
 ];
 
 function CompanySection() {
   const [saved, setSaved] = useState<CompanySettingsRow | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [rvd, setRvd] = useState(true);
+  const [limits, setLimits] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -60,6 +65,7 @@ function CompanySection() {
     setSaved(row);
     setDraft(Object.fromEntries(COMPANY_FIELDS.map((f) => [f.key, String(row[f.key])])));
     setRvd(row.rvd_compensation_tracking_enabled);
+    setLimits(row.overtime_limits_enabled);
   }
 
   useEffect(() => {
@@ -70,7 +76,8 @@ function CompanySection() {
 
   const changed = COMPANY_FIELDS.filter((f) => Number(draft[f.key]) !== saved[f.key])
     .map((f) => f.key);
-  const dirty = changed.length > 0 || rvd !== saved.rvd_compensation_tracking_enabled;
+  const dirty = changed.length > 0 || rvd !== saved.rvd_compensation_tracking_enabled
+    || limits !== saved.overtime_limits_enabled;
 
   async function save() {
     if (!saved) return;
@@ -80,7 +87,9 @@ function CompanySection() {
     }
     setBusy(true); setErrors({}); setStatus(null);
     try {
-      const patch: Record<string, unknown> = { rvd_compensation_tracking_enabled: rvd };
+      const patch: Record<string, unknown> = {
+        rvd_compensation_tracking_enabled: rvd, overtime_limits_enabled: limits,
+      };
       changed.forEach((key) => { patch[key] = draft[key]; });
       fill(await settingsApi.save(patch as Partial<CompanySettingsRow>));
       setStatus("Сохранено");
@@ -111,6 +120,11 @@ function CompanySection() {
       <label className="vs-check">
         <input type="checkbox" checked={rvd} onChange={(e) => setRvd(e.target.checked)} />
         Учитывать компенсацию работы в выходной (отгул или двойная оплата)
+      </label>
+      <label className="vs-check">
+        <input type="checkbox" checked={limits} onChange={(e) => setLimits(e.target.checked)} />
+        Контролировать пределы сверхурочной работы — при превышении предупреждать
+        при вводе и согласовании
       </label>
       <div className="vs-settings-foot">
         {status && <span className="vs-muted vs-small">{status}</span>}

@@ -16,6 +16,7 @@ from employees.views import (
     InvitationReissueView,
     LoginView,
 )
+from schedule.overtime_views import OvertimeViewSet
 from schedule.team import (
     DecisionsView,
     ExceptionRejectView,
@@ -61,6 +62,7 @@ router.register("audit-log", AuditLogViewSet, basename="audit-log")
 router.register("admin/rvd", RvdAdminViewSet, basename="admin-rvd")
 router.register("day-offs", DayOffViewSet, basename="day-off")
 router.register("absences", AbsenceViewSet, basename="absence")
+router.register("overtime", OvertimeViewSet, basename="overtime")
 router.register("absence-reasons", AbsenceReasonViewSet, basename="absence-reason")
 router.register("tags", TagViewSet, basename="tag")
 router.register("schedule-approvals", ScheduleApprovalViewSet, basename="schedule-approval")

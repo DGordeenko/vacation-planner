@@ -11,6 +11,7 @@ import TeamCalendar from "./components/TeamCalendar";
 import EmployeeImport from "./components/EmployeeImport";
 import AuditLog from "./components/AuditLog";
 import Settings from "./components/Settings";
+import Overtime from "./components/Overtime";
 import TimeOff from "./components/TimeOff";
 import RvdAdmin from "./components/RvdAdmin";
 import NotificationBell from "./components/NotificationBell";
@@ -31,7 +32,7 @@ function bestContrast(hex: string) {
 }
 
 const VIEWS = ["schedule", "holidays", "decisions", "team", "tags", "employees", "audit",
-  "settings", "timeoff", "rvd"] as const;
+  "settings", "timeoff", "rvd", "overtime"] as const;
 type View = typeof VIEWS[number];
 const ADMIN_VIEWS: { view: View; title: string }[] = [
   { view: "employees", title: "Сотрудники" },
@@ -351,6 +352,8 @@ export default function App() {
               onClick={() => setView("schedule")}>Мой график</button>
             <button className="vs-nav-item" aria-current={view === "timeoff"}
               onClick={() => setView("timeoff")}>Отгулы</button>
+            <button className="vs-nav-item" aria-current={view === "overtime"}
+              onClick={() => setView("overtime")}>Сверхурочные</button>
             {(me.is_manager || me.is_admin) && (
               <button className="vs-nav-item" aria-current={view === "decisions"}
                 onClick={() => setView("decisions")}>
@@ -402,6 +405,9 @@ export default function App() {
         <RvdAdmin onBack={() => setView("schedule")} />
       ) : view === "timeoff" ? (
         <TimeOff me={me} onBack={() => { setView("schedule"); void reload(); }}
+          onChanged={() => void reload()} />
+      ) : view === "overtime" ? (
+        <Overtime me={me} onBack={() => { setView("schedule"); void reload(); }}
           onChanged={() => void reload()} />
       ) : view === "settings" ? (
         <Settings branding={branding} onBack={() => { setView("schedule"); void reload(); }}
