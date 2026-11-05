@@ -325,3 +325,59 @@ SBOM обоих образов (SPDX) прикладывается к каждо
 CI запускает compose с теми же ограничениями (`deploy/ci/compose.readonly.yml`,
 с включённым демо-режимом) и проверяет, что приложение работает,
 а запись в корневую ФС невозможна.
+
+## 7. Секреты
+
+### Переменная или файл
+
+Каждый секрет можно передать файлом — переменной `<ИМЯ>_FILE` с путём:
+`SECRET_KEY_FILE`, `SECRET_KEY_FALLBACKS_FILE`, `DATABASE_URL_FILE`,
+`DEMO_DATABASE_URL_FILE`, `EMAIL_HOST_PASSWORD_FILE`,
+`OIDC_CLIENT_SECRET_FILE`, `ADMIN_PASSWORD_FILE`. Файл сильнее переменной.
+
+Файл предпочтительнее: переменные окружения видны в `/proc/<pid>/environ`,
+`docker inspect`, `kubectl describe`, дампах при падении. Указанный,
+но нечитаемый файл останавливает запуск — тихий откат на значение по
+умолчанию был бы хуже.
+
+### Где хранить в облаке
+
+Источник истины — сервис секретов облака, в кластер секреты попадают
+автоматически, в репозиторий и в GitHub — никогда.
+
+| Облако | Сервис секретов | Как попадает в под |
+|---|---|---|
+| AWS | Secrets Manager | External Secrets Operator → Secret `vacation-secrets` |
+| Yandex Cloud | Lockbox | External Secrets Operator (есть в Marketplace) → Secret `vacation-secrets` |
+| Huawei Cloud | DEW / CSMS | Дополнение CCE Secrets Manager for DEW монтирует секреты **файлами** → переменные `*_FILE` |
+
+Для External Secrets Operator манифесты приложения не меняются: оператор
+создаёт тот же Secret `vacation-secrets`, что сейчас создаётся вручную.
+Для Huawei — том CSI в поде бэкенда, например `/mnt/secrets/`, и в
+ConfigMap: `SECRET_KEY_FILE=/mnt/secrets/secret_key`,
+`DATABASE_URL_FILE=/mnt/secrets/database_url` и т. д.
+
+Доступ к секретам — отдельной учётной записью только на чтение нужных
+секретов (`lockbox.payloadViewer` на конкретный секрет, политика
+Secrets Manager на конкретные ARN, `cce.io/dew-resource` со списком
+секретов). У конвейера выкатки доступа к секретам приложения нет.
+
+### Смена SECRET_KEY
+
+От `SECRET_KEY` зависят только подписи сессий Django: вход в админку и
+незавершённый вход через Keycloak. Токены входа в приложение — случайные
+ключи в базе, от ключа не зависят. Сменить без разлогинивания:
+
+1. Новый ключ — в `SECRET_KEY`, прежний — в `SECRET_KEY_FALLBACKS`.
+2. Выкатить. Старые сессии принимаются, новые подписываются новым ключом.
+3. Через `SESSION_COOKIE_AGE` (12 часов) удалить `SECRET_KEY_FALLBACKS`.
+
+При утечке ключа шаг 1 — без `SECRET_KEY_FALLBACKS`: все сессии,
+подписанные утёкшим ключом, сразу перестают действовать.
+
+### Первый администратор
+
+Пароль первого администратора удаляется из окружения после первого
+входа — обязательный шаг, чек-лист в `14-initial-admin.md`, раздел 5.
+В Kubernetes он в отдельном Secret `vacation-admin`, который подключён
+только к Job миграций.
