@@ -4,11 +4,13 @@ import type { EmployeeBrief, TagMember, TagRow } from "../types";
 import EmployeePicker from "./EmployeePicker";
 
 /** Справочник тегов: лимиты одновременного отсутствия и ручное назначение.
-    Администратор меняет справочник и лимиты; руководитель назначает и снимает
-    дополнительные теги сотрудникам своей структуры. Сотрудник сюда не попадает. */
-/** canAssign — назначать теги своей структуре (руководитель); HR-администратор только смотрит. */
-export default function TagsAdmin({ onBack, canEdit, canAssign = true }: {
-  onBack: () => void; canEdit: boolean; canAssign?: boolean;
+    Администратор ведёт все теги и лимиты. Руководитель создаёт свои теги
+    с лимитом, меняет и удаляет только их, назначает теги сотрудникам своей
+    структуры. Что можно менять в конкретном теге, решает сервер (can_edit).
+    canEdit — вид администратора; canCreate — показать создание тега;
+    canAssign — назначение; HR-администратор только смотрит. */
+export default function TagsAdmin({ onBack, canEdit, canCreate = canEdit, canAssign = true }: {
+  onBack: () => void; canEdit: boolean; canCreate?: boolean; canAssign?: boolean;
 }) {
   const [tags, setTags] = useState<TagRow[]>([]);
   const [filter, setFilter] = useState("");
@@ -60,9 +62,13 @@ export default function TagsAdmin({ onBack, canEdit, canAssign = true }: {
           ? "Лимит — сколько сотрудников с тегом могут быть в отпуске одновременно. "
             + "Пусто — без ограничения. Теги подразделений создаются из кадровой "
             + "выгрузки; дополнительные назначаются вручную."
-          : "Назначьте сотрудникам своей структуры дополнительные теги — по ним "
-            + "проверяется лимит одновременного отсутствия. Лимиты задаёт "
-            + "администратор; теги подразделений приходят из оргструктуры."}
+          : canCreate
+            ? "Создавайте свои теги для групп сотрудников со схожими функциями и "
+              + "задавайте лимит — сколько из них могут быть в отпуске одновременно. "
+              + "Лимит действует на всю компанию, поэтому менять и удалять можно "
+              + "только свои теги; остальные ведёт администратор, теги подразделений "
+              + "приходят из оргструктуры."
+            : "Теги сотрудников и лимиты одновременного отсутствия."}
       </p>
 
       {error && (
@@ -77,7 +83,7 @@ export default function TagsAdmin({ onBack, canEdit, canAssign = true }: {
           Найти тег
           <input value={filter} onChange={(e) => setFilter(e.target.value)} />
         </label>
-        {canEdit && <div className="vs-new-tag">
+        {canCreate && <div className="vs-new-tag">
           <label className="vs-field vs-inline-field">
             Новый тег
             <input value={newName} placeholder="Например, Доступ в ЦОД"
@@ -99,7 +105,7 @@ export default function TagsAdmin({ onBack, canEdit, canAssign = true }: {
           <span>Тег</span><span>Тип</span><span>Сотрудников</span><span>Лимит</span>
         </div>
         {visible.map((tag) => (
-          <TagLine key={tag.id} tag={tag} open={openId === tag.id} canEdit={canEdit}
+          <TagLine key={tag.id} tag={tag} open={openId === tag.id} canEdit={tag.can_edit}
             canAssign={canAssign}
             onToggle={() => setOpenId(openId === tag.id ? null : tag.id)}
             onChanged={reload} onError={setError} />
@@ -149,6 +155,17 @@ function TagLine({ tag, open, canEdit, canAssign, onToggle, onChanged, onError }
     }
   }
 
+  async function remove() {
+    const who = tag.members_count ? ` Он снимется с сотрудников: ${tag.members_count}.` : "";
+    if (!window.confirm(`Удалить тег «${tag.name}»?${who}`)) return;
+    try {
+      await tagsApi.remove(tag.id);
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Не удалось удалить тег");
+    }
+  }
+
   return (
     <div className={`vs-tag-line${open ? " open" : ""}`}>
       <div className="vs-tags-row">
@@ -157,6 +174,7 @@ function TagLine({ tag, open, canEdit, canAssign, onToggle, onChanged, onError }
         </button>
         <span className="vs-muted vs-small">
           {tag.is_org_unit_tag ? "подразделение" : "дополнительный"}
+          {tag.created_by && !tag.is_org_unit_tag && <> · создал {tag.created_by}</>}
         </span>
         <span>{tag.members_count}</span>
         <span className="vs-limit-cell">
@@ -167,6 +185,10 @@ function TagLine({ tag, open, canEdit, canAssign, onToggle, onChanged, onError }
             onChange={(e) => setLimit(e.target.value)} onBlur={saveLimit}
             onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
           {saved && <span className="vs-saved">сохранено</span>}
+          {!tag.is_org_unit_tag && (
+            <button className="vs-x" onClick={remove} aria-label={`Удалить тег «${tag.name}»`}
+              title="Удалить тег">✕</button>
+          )}
           </>}
         </span>
       </div>
@@ -234,7 +256,7 @@ function TagMembers({ tag, canEdit, canAssign, onChanged, onError }: {
           {members.length === 0 && <li className="vs-muted vs-small">Пока никого.</li>}
         </ul>
       )}
-      {!canEdit && canAssign && (
+      {!canEdit && canAssign && !tag.can_edit && (
         <p className="vs-muted vs-small">Показаны сотрудники вашей структуры.</p>
       )}
       {canAssign && <EmployeePicker label="Добавить сотрудника" exclude={memberIds}

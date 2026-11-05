@@ -192,7 +192,7 @@ TEAM_CALENDAR_ENTRY_FIELDS = TEAM_ENTRY_FIELDS | {"waiting_for"}
 TEAM_ENTRY_DETAIL_FIELDS = TEAM_ENTRY_FIELDS | {"employee_name", "org_unit", "steps",
                                                 "exception"}
 TAG_FIELDS = {"id", "name", "max_simultaneous_absence", "members_count", "manual_count",
-              "is_org_unit_tag"}
+              "is_org_unit_tag", "created_by", "can_edit"}
 TAG_MEMBER_FIELDS = {"employee_id", "full_name", "employee_number", "org_unit", "source",
                      "assigned_by", "assigned_at"}
 EMPLOYEE_BRIEF_FIELDS = {"id", "full_name", "employee_number", "org_unit"}

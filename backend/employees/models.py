@@ -175,6 +175,12 @@ class Tag(models.Model):
     max_simultaneous_absence = models.PositiveIntegerField(
         null=True, blank=True, help_text="Пусто — лимит не ограничен"
     )
+    # Кто создал тег. Руководитель меняет и удаляет только свои теги;
+    # пусто — тег администратора или создан до появления поля.
+    created_by = models.ForeignKey(
+        "Employee", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="tags_created", verbose_name="Создал",
+    )
 
     class Meta:
         verbose_name = "Тег"
