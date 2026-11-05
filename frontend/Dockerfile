@@ -20,10 +20,14 @@ FROM nginx:1.27-alpine AS runtime
 # resolver в nginx.conf. BACKEND_URL — без пути и завершающего «/».
 ENV PORT=8080 \
     BACKEND_URL=http://backend:8000 \
-    NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
+    NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+    DJANGO_ADMIN_PATH=admin \
+    ADMIN_ALLOW_CIDRS=""
 
 COPY --from=builder /build/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/templates/default.conf.template
+# Список адресов для админки собирается при старте контейнера.
+COPY docker-entrypoint.d/15-admin-allow.sh /docker-entrypoint.d/
 
 # Образ nginx сам подставляет переменные окружения в шаблоны из
 # /etc/nginx/templates при старте — отдельный скрипт не нужен.

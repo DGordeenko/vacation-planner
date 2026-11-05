@@ -97,6 +97,11 @@ jobs:
           docker compose up -d --wait postgres backend frontend
           curl -fsS http://localhost:8080/api/health/
           curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
+          # Админка через nginx: без списка адресов закрыта, со списком —
+          # страница входа Django, а не SPA.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/admin/login/)" = 403
+          ADMIN_ALLOW_CIDRS=0.0.0.0/0 docker compose up -d --wait frontend
+          curl -fsS http://localhost:8080/admin/login/ | grep -q csrfmiddlewaretoken
       - name: Журналы при сбое
         if: failure()
         run: docker compose logs --no-color
