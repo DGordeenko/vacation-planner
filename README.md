@@ -176,7 +176,8 @@ cd frontend && npm run lint && npx tsc -b && npm run build
 | `LOGIN_RATE` | Предел попыток входа с одного адреса, по умолчанию `10/min`; `0` — выключить |
 | `DEBUG` | По умолчанию `False` |
 | `ALLOWED_HOSTS` | Домены через запятую |
-| `DATABASE_URL` | `postgres://...`; без неё используется SQLite |
+| `DATABASE_URL` | `postgres://...`; без неё используется SQLite. Параметры libpq — в строке запроса: `?sslmode=verify-full&sslrootcert=...&target_session_attrs=read-write&connect_timeout=5` |
+| `DB_SSLMODE`, `DB_SSLROOTCERT` | Режим TLS к базе и путь к корневому сертификату; сильнее параметров в `DATABASE_URL`. Для управляемой базы — `verify-full`, иначе `manage.py check --deploy` предупредит (`vacation.W001`) |
 | `PORT` | Порт сервиса |
 | `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS` | Нужны, только если фронтенд на другом домене |
 | `VITE_API_BASE_URL` | Адрес API. Пусто — относительный путь через прокси nginx |
