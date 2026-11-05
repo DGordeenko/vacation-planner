@@ -31,6 +31,13 @@ updates:
     directory: /
     schedule: { interval: weekly, day: monday }
     commit-message: { prefix: "chore" }
+    # Мажорная версия PostgreSQL — не обновление зависимости, а миграция
+    # данных: каталог базы 16 не читается сервером 18, и локальная база в томе
+    # после такого PR не поднимется. Переход — отдельной задачей (pg_upgrade
+    # или дамп и восстановление), обновления внутри 16 приходят как обычно.
+    ignore:
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
 
   # Actions закреплены по SHA: Dependabot обновляет SHA и комментарий с версией.
   - package-ecosystem: github-actions
