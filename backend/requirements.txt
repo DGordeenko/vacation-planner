@@ -1,14 +1,14 @@
 Django==6.1.1
 djangorestframework==3.18.3   # 3.18.0+ официально поддерживает Django 6.1
 psycopg[binary]==3.2.3
-python-dotenv==1.0.1
+python-dotenv==1.2.4
 
 # Запуск в контейнере (этап 0, см. docs/tasks/00-skeleton.md)
 gunicorn==23.0.0        # сервер приложений
 whitenoise==6.8.2       # отдача статики самим приложением
 
 # Доменная аутентификация
-pyjwt[crypto]==2.10.1   # проверка подписи id_token (Keycloak)
-requests==2.32.3
+pyjwt[crypto]==2.15.1   # проверка подписи id_token (Keycloak); 2.13+ — исправления уязвимостей
+requests==2.34.2
 # gssapi==1.9.0         # Kerberos: требует системных libkrb5-dev и krb5-user,
                         # включать только на сервере с настроенным keytab
