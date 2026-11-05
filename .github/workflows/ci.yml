@@ -41,8 +41,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"   # как в backend/Dockerfile
           cache: pip
@@ -67,7 +67,8 @@ jobs:
           SECURE_HSTS_SECONDS: "31536000"
           SILENCED_SYSTEM_CHECKS: security.W005,security.W008,security.W021
         run: |
-          export SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(60))")
+          SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(60))")
+          export SECRET_KEY
           python manage.py check --deploy --fail-level WARNING
 
   frontend:
@@ -77,8 +78,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"   # как в frontend/Dockerfile
           cache: npm
@@ -93,7 +94,7 @@ jobs:
     name: Docker-образы
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # Сборка образа бэкенда сама прогоняет manage.py check и collectstatic:
       # ошибка импорта ломает CI, а не запуск на площадке.
       - name: Образ бэкенда
@@ -108,7 +109,8 @@ jobs:
       # с миграциями и фронтенд с прокси; проверяем API через nginx.
       - name: Запуск через docker compose
         run: |
-          export SECRET_KEY=ci-compose-$(date +%s)-not-secret
+          SECRET_KEY=ci-compose-$(date +%s)-not-secret
+          export SECRET_KEY
           docker compose up -d --wait postgres backend frontend
           curl -fsS http://localhost:8080/api/health/
           curl -fsS http://localhost:8080/api/health/live/
@@ -123,11 +125,25 @@ jobs:
         if: failure()
         run: docker compose logs --no-color
 
+  # Синтаксис и выражения workflow и скриптов выкатки: ошибка в deploy.yml
+  # иначе всплыла бы только при выкатке.
+  workflows:
+    name: GitHub Actions — workflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: actionlint
+        run: |
+          curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz | tar xz actionlint
+          ./actionlint -color
+      - name: shellcheck скриптов развёртывания
+        run: shellcheck deploy/ci/*.sh frontend/docker-entrypoint.d/*.sh
+
   kubernetes:
     name: Kubernetes — манифесты
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Сборка kustomize и проверка по схемам Kubernetes
         run: |
           curl -sSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz | tar xz
