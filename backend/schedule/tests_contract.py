@@ -186,7 +186,7 @@ APPROVAL_STEP_FIELDS = {"id", "order", "level", "level_display", "approver", "ap
                         "status", "comment", "decided_at"}
 # types.ts: TeamCalendar, TagRow, TagMember, EmployeeBrief
 TEAM_CALENDAR_FIELDS = {"date_from", "date_to", "scope", "can_view_all", "tag",
-                        "limit_reached", "rows"}
+                        "limit_reached", "rows", "units", "unit"}
 TEAM_ROW_FIELDS = {"employee_id", "full_name", "org_unit", "own", "entries"}
 TEAM_CALENDAR_ENTRY_FIELDS = TEAM_ENTRY_FIELDS | {"waiting_for"}
 TEAM_ENTRY_DETAIL_FIELDS = TEAM_ENTRY_FIELDS | {"employee_name", "org_unit", "steps",

@@ -6,6 +6,12 @@ import type {
 } from "../types";
 import TeamEntryCard from "./TeamEntryCard";
 
+/** Дерево в списке: отступ по уровню и имя — длинный путь целиком не помещается. */
+function unitLabel(path: string, top: number) {
+  const parts = path.split(" / ");
+  return "\u00a0\u00a0\u00a0".repeat(parts.length - top) + parts[parts.length - 1];
+}
+
 const STATUS_LABEL: Record<string, string> = {
   approved: "утверждён",
   pending_approval: "на согласовании",
@@ -20,6 +26,7 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
   const [month, setMonth] = useState(0);
   const [tags, setTags] = useState<TagRow[]>([]);
   const [tagId, setTagId] = useState<string | null>(null);
+  const [unitId, setUnitId] = useState<string | null>(null);
   const [onlyAbsent, setOnlyAbsent] = useState(false);
   const [data, setData] = useState<TeamCalendarData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,12 +47,18 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
   const reload = useCallback(async () => {
     try {
       setData(await managerApi.teamCalendar(
-        iso(days[0]), iso(days[days.length - 1]), tagId, scope));
+        iso(days[0]), iso(days[days.length - 1]), tagId, scope, unitId));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить календарь");
     }
-  }, [days, tagId, scope]);
+  }, [days, tagId, scope, unitId]);
+
+  /** Чужое подразделение недоступно в «моей структуре» — фильтр сбрасывается. */
+  function switchScope(next: TeamScope) {
+    if (next === "mine") setUnitId(null);
+    setScope(next);
+  }
 
   useEffect(() => { void reload(); }, [reload]);
 
@@ -56,6 +69,9 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
     const all = data?.rows ?? [];
     return onlyAbsent ? all.filter((row) => row.entries.length > 0) : all;
   }, [data, onlyAbsent]);
+
+  /** Верхний уровень списка: в «моей структуре» это не корень компании. */
+  const top = Math.min(...(data?.units ?? []).map((u) => u.path.split(" / ").length));
 
   const limited = tags.filter((t) => t.max_simultaneous_absence !== null);
   const others = tags.filter((t) => t.max_simultaneous_absence === null);
@@ -86,9 +102,9 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
       {data?.can_view_all && (
         <div className="vs-seg" role="group" aria-label="Чей график показать">
           <button className={scope === "mine" ? "active" : ""} aria-pressed={scope === "mine"}
-            onClick={() => setScope("mine")}>Моя структура</button>
+            onClick={() => switchScope("mine")}>Моя структура</button>
           <button className={scope === "all" ? "active" : ""} aria-pressed={scope === "all"}
-            onClick={() => setScope("all")}>Все подразделения</button>
+            onClick={() => switchScope("all")}>Все подразделения</button>
         </div>
       )}
 
@@ -101,9 +117,18 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
             disabled={month === 11} aria-label="Следующий месяц">→</button>
         </div>
         <label className="vs-field vs-inline-field">
+          Подразделение
+          <select value={unitId ?? ""} onChange={(e) => setUnitId(e.target.value || null)}>
+            <option value="">{scope === "all" ? "Все подразделения" : "Вся моя структура"}</option>
+            {(data?.units ?? []).map((u) => <option key={u.id} value={u.id} title={u.path}>
+              {unitLabel(u.path, top)}
+            </option>)}
+          </select>
+        </label>
+        <label className="vs-field vs-inline-field">
           Тег
           <select value={tagId ?? ""} onChange={(e) => setTagId(e.target.value || null)}>
-            <option value="">Все сотрудники</option>
+            <option value="">Любой</option>
             {limited.length > 0 && (
               <optgroup label="С лимитом">
                 {limited.map((t) => (
@@ -113,9 +138,11 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
                 ))}
               </optgroup>
             )}
-            <optgroup label="Без лимита">
-              {others.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </optgroup>
+            {others.length > 0 && (
+              <optgroup label="Без лимита">
+                {others.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </optgroup>
+            )}
           </select>
         </label>
         <label className="vs-check">
@@ -198,7 +225,11 @@ export default function TeamCalendar({ year, onBack }: { year: number; onBack: (
             ))}
             {rows.length === 0 && data && (
               <tr><td className="vs-team-empty" colSpan={days.length + 1}>
-                Нет сотрудников по выбранным условиям.
+                {data.unit && data.tag
+                  ? `В подразделении «${data.unit.path}» нет сотрудников с тегом «${data.tag.name}».`
+                  : onlyAbsent && (data.rows.length > 0)
+                    ? "В этом месяце никто не отсутствует."
+                    : "Нет сотрудников по выбранным условиям."}
               </td></tr>
             )}
           </tbody>

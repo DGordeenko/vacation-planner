@@ -189,9 +189,10 @@ export const managerApi = {
     }),
 
   teamCalendar: (date_from: string, date_to: string, tagId: string | null,
-    scope: TeamScope = "mine") =>
+    scope: TeamScope = "mine", unitId: string | null = null) =>
     request<TeamCalendar>(`/team-calendar/?date_from=${date_from}&date_to=${date_to}`
-      + (tagId ? `&tag_id=${tagId}` : "") + (scope === "all" ? "&scope=all" : "")),
+      + (tagId ? `&tag_id=${tagId}` : "") + (unitId ? `&unit_id=${unitId}` : "")
+      + (scope === "all" ? "&scope=all" : "")),
   teamEntry: (id: string) => request<TeamEntryDetail>(`/team-calendar/entries/${id}/`),
   approveDayOff: (id: string) =>
     request<ScheduleEntry>(`/day-offs/${id}/approve/`, { method: "POST" }),
