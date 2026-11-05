@@ -1,5 +1,6 @@
 # --- Сборка ---------------------------------------------------------------
-FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS builder
+# Node 26 — текущая LTS (с октября 2026); образ сборки, в рабочий не попадает.
+FROM node:26-alpine@sha256:7ed4edf2b680417bf06d3f465de09bb113f877ff265b15f72a27a4c6fb76fb04 AS builder
 
 WORKDIR /build
 COPY package*.json ./
