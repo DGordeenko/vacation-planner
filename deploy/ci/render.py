@@ -26,7 +26,7 @@
                      (сертификат, класс балансировщика конкретного облака)
   CONFIG_OVERRIDES   значения ConfigMap, по одной «КЛЮЧ=значение» в строке
                      (DB_SSLMODE, TRUSTED_PROXY_CIDRS, ADMIN_ALLOW_CIDRS…)
-  PG_CLIENT_IMAGE    образ с pg_dump для копии; по умолчанию postgres:16-alpine
+  BACKUP_IMAGE       адрес образа резервного копирования без тега (обязательна)
 
 python3 deploy/ci/render.py <каталог вывода>
 """
@@ -73,7 +73,7 @@ def base_image_names():
     """
     text = (ROOT / "k8s" / "kustomization.yaml").read_text()
     found = dict(re.findall(r"- name: (vacation-\w+)\n\s+newName: (\S+)", text))
-    for name in ("vacation-backend", "vacation-frontend"):
+    for name in ("vacation-backend", "vacation-frontend", "vacation-backup"):
         found.setdefault(name, name)
     return found
 
@@ -105,6 +105,7 @@ def kustomization(out, tag, domain):
         "images": [
             {"name": names["vacation-backend"], "newName": need("BACKEND_IMAGE"), "newTag": tag},
             {"name": names["vacation-frontend"], "newName": need("FRONTEND_IMAGE"), "newTag": tag},
+            {"name": names["vacation-backup"], "newName": need("BACKUP_IMAGE"), "newTag": tag},
         ],
         "patches": [
             {"target": {"kind": "ConfigMap", "name": "vacation-config"},
@@ -150,9 +151,8 @@ def main():
 
     backup = (ROOT / "k8s" / "pipeline" / "pre-deploy-backup.yaml").read_text()
     backup = backup.replace("name: pre-deploy-backup", f"name: pre-deploy-backup-{tag}", 1)
-    backup = backup.replace("image: PG_CLIENT_IMAGE",
-                            f"image: {os.environ.get('PG_CLIENT_IMAGE') or 'postgres:16-alpine'}")
-    backup = backup.replace("value: IMAGE_TAG_VALUE", f'value: "{tag}"')
+    backup = backup.replace("image: vacation-backup", f"image: {need('BACKUP_IMAGE')}:{tag}")
+    backup = backup.replace("value: IMAGE_TAG_VALUE", f'value: "vacation-{tag}"')
 
     (out / "app.yaml").write_text("\n---\n".join(app))
     (out / "frontend.yaml").write_text("\n---\n".join(frontend))

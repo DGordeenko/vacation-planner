@@ -19,3 +19,6 @@ images:
   - name: vacation-frontend
     newName: registry.example.com/vacation/frontend
     newTag: "1.2.0"
+  - name: vacation-backup
+    newName: registry.example.com/vacation/backup
+    newTag: "1.2.0"

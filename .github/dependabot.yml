@@ -23,7 +23,7 @@ updates:
   # Базовые образы закреплены по digest: Dependabot обновляет и digest,
   # и тег в пределах того же ряда.
   - package-ecosystem: docker
-    directories: [/backend, /frontend]
+    directories: [/backend, /frontend, /deploy/backup]
     schedule: { interval: weekly, day: monday }
     commit-message: { prefix: "chore" }
 

@@ -102,8 +102,11 @@ services:
   # хранение 14 дней. Восстановление — docs/16-backups.md.
   # Тот же образ, что у базы: версия pg_dump совпадает с версией сервера.
   backup:
-    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
-    entrypoint: ["/bin/sh", "/pg-backup.sh"]
+    # Тот же образ, что у CronJob Kubernetes: pg_dump + шифрование age.
+    build: ./deploy/backup
+    # Каталог копий на хосте принадлежит пользователю хоста, а не UID 70
+    # из образа: без root копия не записалась бы.
+    user: root
     environment:
       PGHOST: postgres
       PGDATABASE: ${POSTGRES_DB:-vacation}
@@ -111,8 +114,9 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:-vacation}
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
       BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      # Открытые ключи age через запятую: задан — копии шифруются
+      BACKUP_AGE_RECIPIENTS: ${BACKUP_AGE_RECIPIENTS:-}
     volumes:
-      - ./deploy/backup/pg-backup.sh:/pg-backup.sh:ro
       - ${BACKUP_HOST_DIR:-./backups}:/backups
     depends_on:
       postgres:

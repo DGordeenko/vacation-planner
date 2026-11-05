@@ -65,3 +65,55 @@ spec:
               volumeMounts:
                 - { name: tmp, mountPath: /tmp }
                 - { name: db-ca, mountPath: /app/certs, readOnly: true }
+---
+# Ежедневная копия базы: pg_dump → шифрование age → S3-совместимое хранилище
+# с серверным шифрованием KMS (docs/16-backups.md, раздел 3). Без ключа age
+# Job завершается ошибкой: открытая копия ПДн в бакете недопустима.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+spec:
+  schedule: "15 2 * * *"
+  timeZone: Europe/Moscow
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+          volumes:
+            - name: work
+              emptyDir: { sizeLimit: 2Gi }
+            - name: db-ca
+              configMap: { name: vacation-db-ca, optional: true }
+          containers:
+            - name: backup
+              image: vacation-backup
+              env:
+                - { name: BACKUP_ONCE, value: "1" }
+                - { name: BACKUP_DIR, value: /work }
+                - { name: BACKUP_REQUIRE_ENCRYPTION, value: "1" }
+                - { name: BACKUP_S3_PREFIX, value: daily }
+                - { name: HOME, value: /work }
+                - name: DATABASE_URL
+                  valueFrom: { secretKeyRef: { name: vacation-secrets, key: DATABASE_URL } }
+                - name: DB_SSLMODE
+                  valueFrom: { configMapKeyRef: { name: vacation-config, key: DB_SSLMODE, optional: true } }
+                - name: DB_SSLROOTCERT
+                  valueFrom: { configMapKeyRef: { name: vacation-config, key: DB_SSLROOTCERT, optional: true } }
+                - name: BACKUP_AGE_RECIPIENTS
+                  valueFrom: { configMapKeyRef: { name: vacation-config, key: BACKUP_AGE_RECIPIENTS } }
+              # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION,
+              # S3_ENDPOINT, BACKUP_S3_BUCKET, S3_SSE, S3_SSE_KMS_KEY_ID
+              envFrom:
+                - secretRef: { name: vacation-backup }
+              securityContext:
+                readOnlyRootFilesystem: true
+              volumeMounts:
+                - { name: work, mountPath: /work }
+                - { name: db-ca, mountPath: /app/certs, readOnly: true }

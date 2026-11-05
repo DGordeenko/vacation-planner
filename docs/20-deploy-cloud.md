@@ -102,27 +102,16 @@ CI зелёный ─▶ образы ─▶ копия базы ─▶ мигр
    В `CONFIG_OVERRIDES` (ниже): `DB_SSLMODE=verify-full`,
    `DB_SSLROOTCERT=/app/certs/root.crt`.
 3. **Реестр образов** (ECR, SWR или Container Registry) с репозиториями
-   `backend` и `frontend` и **сканированием уязвимостей при загрузке**
+   `backend`, `frontend` и `backup` и **сканированием уязвимостей при загрузке**
    (scan on push в ECR, сканер в Container Registry, сканирование образов
    SWR).
-4. **Бакет для копий базы** (S3, OBS или Object Storage) с шифрованием
-   на стороне сервера ключом KMS и правилом жизненного цикла (например,
-   удалять `pre-deploy/` старше 30 дней). Отдельный ключ доступа только
-   на запись в этот бакет — в Secret кластера:
-   ```bash
-   kubectl -n vacation create secret generic vacation-backup \
-     --from-literal=AWS_ACCESS_KEY_ID=<ключ> \
-     --from-literal=AWS_SECRET_ACCESS_KEY=<секрет> \
-     --from-literal=AWS_DEFAULT_REGION=<регион> \
-     --from-literal=S3_ENDPOINT=<адрес S3 API> \
-     --from-literal=BACKUP_BUCKET=<бакет> \
-     --from-literal=S3_SSE=aws:kms        # только для AWS; в OBS и Object Storage — шифрование бакета по умолчанию
-   ```
-   Адрес S3 API: AWS — `https://s3.<регион>.amazonaws.com`, Huawei —
-   `https://obs.<регион>.myhuaweicloud.com`, Yandex —
-   `https://storage.yandexcloud.net`. Без копии (`BACKUP_ENABLED=0`)
-   конвейер работает, но тогда восстановление — только из бэкапов
-   управляемой базы (PITR, раздел 5).
+4. **Бакет для копий базы** и ключи age — `16-backups.md`, раздел 3:
+   S3-совместимое хранилище облака с шифрованием KMS и правилом жизненного
+   цикла, Secret `vacation-backup` с ключом доступа только на запись,
+   открытый ключ age — в `BACKUP_AGE_RECIPIENTS` (`CONFIG_OVERRIDES`).
+   Копия перед миграциями без ключа age не создаётся и останавливает
+   выкатку; `BACKUP_ENABLED=0` выключает её, тогда восстановление —
+   из ежедневных копий и PITR управляемой базы.
 5. **Секрет приложения** `vacation-secrets` — по
    `deploy/k8s/secret.example.yaml` (`docs/18-deploy-kubernetes.md`).
 6. **Учётная запись конвейера в кластере** — права только в пространстве
@@ -227,7 +216,6 @@ kubectl --kubeconfig deployer.kubeconfig -n $NS auth can-i get secrets         #
    | `INGRESS_CLASS` | класс ingress-контроллера; пусто — по умолчанию |
    | `INGRESS_ANNOTATIONS` | по строке `ключ=значение`: выпуск сертификата, тип балансировщика |
    | `CONFIG_OVERRIDES` | по строке `КЛЮЧ=значение` в ConfigMap: `DB_SSLMODE`, `DB_SSLROOTCERT`, `TRUSTED_PROXY_CIDRS`, `ADMIN_ALLOW_CIDRS`, `SECURE_HSTS_SECONDS`… |
-   | `PG_CLIENT_IMAGE` | образ с `pg_dump` не старше версии сервера, по умолчанию `postgres:16-alpine` |
    | `BACKUP_ENABLED` | `1` (по умолчанию) или `0` |
    | `SMOKE_ADMIN_CODE` | ожидаемый код `/admin/login/` с раннера, по умолчанию `403` |
    | `ADMIN_PATH` | если менялся `DJANGO_ADMIN_PATH` |
