@@ -1,0 +1,11 @@
+name: tmp-digests
+on: push
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          for i in nginxinc/nginx-unprivileged:1.30-alpine nginxinc/nginx-unprivileged:stable-alpine; do
+            echo "DIGEST $i $(docker buildx imagetools inspect "$i" --format '{{json .Manifest.Digest}}')"
+          done
+          docker run --rm nginxinc/nginx-unprivileged:1.30-alpine nginx -v 2>&1 | sed 's/^/DIGEST ver /'
