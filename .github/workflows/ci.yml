@@ -110,6 +110,10 @@ jobs:
           docker run --rm --entrypoint python vacation-backend:krb -c "import gssapi; print('gssapi', gssapi.__name__)"
       - name: Образ фронтенда
         run: docker build -t vacation-frontend:ci frontend
+      - name: Образ резервного копирования
+        run: |
+          docker build -t vacation-backup:ci deploy/backup
+          docker run --rm --entrypoint sh vacation-backup:ci -c 'age --version && aws --version && pg_dump --version'
       # Уязвимости в образах: CI падает на CRITICAL и HIGH, для которых уже
       # есть исправление (--ignore-unfixed): без исправления сделать нечего,
       # а красный CI на них только приучил бы его игнорировать.
@@ -118,7 +122,7 @@ jobs:
           curl -fsSL https://github.com/aquasecurity/trivy/releases/download/v0.76.2/trivy_0.76.2_Linux-64bit.tar.gz | tar xz trivy
           # Оба образа проверяются до конца, чтобы в журнале были все находки.
           status=0
-          for image in vacation-backend:ci vacation-frontend:ci; do
+          for image in vacation-backend:ci vacation-frontend:ci vacation-backup:ci; do
             ./trivy image --quiet --scanners vuln --ignore-unfixed \
               --severity CRITICAL,HIGH --exit-code 1 "$image" || status=1
           done
@@ -131,6 +135,7 @@ jobs:
           mkdir -p sbom
           ./syft vacation-backend:ci -o spdx-json=sbom/backend.spdx.json
           ./syft vacation-frontend:ci -o spdx-json=sbom/frontend.spdx.json
+          ./syft vacation-backup:ci -o spdx-json=sbom/backup.spdx.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: sbom
@@ -172,6 +177,22 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/admin/login/)" = 403
           ADMIN_ALLOW_CIDRS=0.0.0.0/0 docker compose up -d --wait frontend
           curl -fsS http://localhost:8080/admin/login/ | grep -q csrfmiddlewaretoken
+      # Резервная копия на настоящей базе: зашифрованный дамп должен
+      # расшифровываться закрытым ключом и читаться pg_restore.
+      - name: Резервная копия с шифрованием и восстановление
+        run: |
+          docker run --rm --entrypoint age-keygen vacation-backup:ci > /tmp/age.key 2>/dev/null
+          pub=$(grep -o 'age1[a-z0-9]*' /tmp/age.key)
+          mkdir -p backups && chmod 777 backups
+          docker compose run --rm -e BACKUP_ONCE=1 -e BACKUP_AGE_RECIPIENTS="$pub" backup
+          ls -l backups
+          file=$(ls backups/*.dump.age)
+          docker run --rm -v "$PWD/backups:/b:ro" -v /tmp/age.key:/k:ro --entrypoint sh vacation-backup:ci \
+            -c "age -d -i /k '/b/$(basename "$file")' | pg_restore --list" | grep -q 'TABLE public employees_employee'
+          # Без ключа при обязательном шифровании — отказ, а не открытая копия.
+          if docker compose run --rm -e BACKUP_ONCE=1 -e BACKUP_REQUIRE_ENCRYPTION=1 backup; then
+            echo "копия без шифрования при BACKUP_REQUIRE_ENCRYPTION=1"; exit 1
+          fi
       # Корневая ФС только для чтения, как в deploy/k8s: если приложению
       # понадобится писать куда-то ещё, это всплывёт здесь, а не в кластере.
       - name: Запуск с файловой системой только для чтения
@@ -253,6 +274,7 @@ jobs:
       - name: Конвейер развёртывания
         run: |
           IMAGE_TAG=sha-ci BACKEND_IMAGE=registry.example.com/b FRONTEND_IMAGE=registry.example.com/f \
+            BACKUP_IMAGE=registry.example.com/k \
             APP_DOMAIN=vacation.example.com INGRESS_CLASS=nginx \
             python3 deploy/ci/render.py /tmp/rendered
           kubeconform -strict -summary -kubernetes-version 1.29.0 /tmp/rendered/*.yaml deploy/k8s/pipeline/deployer-rbac.yaml

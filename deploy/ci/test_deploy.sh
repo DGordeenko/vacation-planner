@@ -7,7 +7,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin"
 
-IMAGE_TAG=sha-test BACKEND_IMAGE=r.example.com/b FRONTEND_IMAGE=r.example.com/f \
+IMAGE_TAG=sha-test BACKEND_IMAGE=r.example.com/b FRONTEND_IMAGE=r.example.com/f BACKUP_IMAGE=r.example.com/k \
   APP_DOMAIN=app.example.com python3 "$HERE/render.py" "$T/out" >/dev/null
 
 cat > "$T/bin/kubectl" <<'K'

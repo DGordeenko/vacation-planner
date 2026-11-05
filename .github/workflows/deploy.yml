@@ -54,12 +54,12 @@ jobs:
       CLUSTER_AUTH: ${{ vars.CLUSTER_AUTH }}             # kubeconfig | aws-eks
       BACKEND_IMAGE: ${{ vars.REGISTRY }}/backend
       FRONTEND_IMAGE: ${{ vars.REGISTRY }}/frontend
+      BACKUP_IMAGE: ${{ vars.REGISTRY }}/backup
       APP_URL: ${{ vars.APP_URL }}
       APP_DOMAIN: ${{ vars.APP_DOMAIN }}
       INGRESS_CLASS: ${{ vars.INGRESS_CLASS }}
       INGRESS_ANNOTATIONS: ${{ vars.INGRESS_ANNOTATIONS }}
       CONFIG_OVERRIDES: ${{ vars.CONFIG_OVERRIDES }}
-      PG_CLIENT_IMAGE: ${{ vars.PG_CLIENT_IMAGE }}
       BACKUP_ENABLED: ${{ vars.BACKUP_ENABLED || '1' }}
       SMOKE_ADMIN_CODE: ${{ vars.SMOKE_ADMIN_CODE || '403' }}
       ADMIN_PATH: ${{ vars.ADMIN_PATH || 'admin' }}
@@ -143,8 +143,10 @@ jobs:
         run: |
           docker build -t "$BACKEND_IMAGE:$TAG" backend
           docker build -t "$FRONTEND_IMAGE:$TAG" frontend
+          docker build -t "$BACKUP_IMAGE:$TAG" deploy/backup
           docker push "$BACKEND_IMAGE:$TAG"
           docker push "$FRONTEND_IMAGE:$TAG"
+          docker push "$BACKUP_IMAGE:$TAG"
 
       - name: Образы указанной версии есть в реестре
         if: steps.version.outputs.build == 'false'
@@ -153,6 +155,7 @@ jobs:
         run: |
           docker manifest inspect "$BACKEND_IMAGE:$TAG" > /dev/null
           docker manifest inspect "$FRONTEND_IMAGE:$TAG" > /dev/null
+          docker manifest inspect "$BACKUP_IMAGE:$TAG" > /dev/null
 
       # --- Вход в кластер ---------------------------------------------------
       # kubeconfig сервисного аккаунта deployer (deploy/k8s/pipeline/

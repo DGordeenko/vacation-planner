@@ -1,9 +1,9 @@
 # Резервная копия базы перед миграциями (конвейер .github/workflows/deploy.yml).
 # Не входит в deploy/k8s/kustomization.yaml: создаётся конвейером на каждую
-# версию с уникальным именем. Дамп выгружается в S3-совместимое хранилище —
-# такое API есть у всех поддерживаемых облаков (AWS S3, Huawei OBS,
-# Yandex Object Storage). Настройки — Secret vacation-backup
-# (docs/20-deploy-cloud.md, раздел 4).
+# версию с уникальным именем. Тот же образ и скрипт, что у ежедневного
+# CronJob backup: pg_dump → шифрование age → S3-совместимое хранилище
+# (AWS S3, Huawei OBS, Yandex Object Storage), каталог pre-deploy/.
+# Без ключа age Job завершается ошибкой, и выкатка останавливается.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -14,48 +14,36 @@ spec:
   template:
     spec:
       restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
       volumes:
-        - name: dump
-          emptyDir: {}
+        - name: work
+          emptyDir: { sizeLimit: 2Gi }
         - name: db-ca
           configMap: { name: vacation-db-ca, optional: true }
-      initContainers:
-        # Версия pg_dump должна быть не ниже версии сервера: образ задаётся
-        # переменной конвейера PG_CLIENT_IMAGE.
-        - name: dump
-          image: PG_CLIENT_IMAGE
-          command: ["sh", "-ec"]
-          args:
-            - |
-              [ -n "${DB_SSLMODE:-}" ] && export PGSSLMODE="$DB_SSLMODE"
-              [ -n "${DB_SSLROOTCERT:-}" ] && export PGSSLROOTCERT="$DB_SSLROOTCERT"
-              pg_dump --format=custom --no-owner --dbname="$DATABASE_URL" --file=/dump/db.dump
-              ls -l /dump/db.dump
+      containers:
+        - name: backup
+          image: vacation-backup
           env:
+            - { name: BACKUP_ONCE, value: "1" }
+            - { name: BACKUP_DIR, value: /work }
+            - { name: BACKUP_REQUIRE_ENCRYPTION, value: "1" }
+            - { name: BACKUP_S3_PREFIX, value: pre-deploy }
+            - { name: BACKUP_NAME, value: IMAGE_TAG_VALUE }
+            - { name: HOME, value: /work }
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: vacation-secrets, key: DATABASE_URL } }
             - name: DB_SSLMODE
               valueFrom: { configMapKeyRef: { name: vacation-config, key: DB_SSLMODE, optional: true } }
             - name: DB_SSLROOTCERT
               valueFrom: { configMapKeyRef: { name: vacation-config, key: DB_SSLROOTCERT, optional: true } }
-          volumeMounts:
-            - { name: dump, mountPath: /dump }
-            - { name: db-ca, mountPath: /app/certs, readOnly: true }
-      containers:
-        - name: upload
-          image: public.ecr.aws/aws-cli/aws-cli:2.22.35
-          command: ["sh", "-ec"]
-          args:
-            - |
-              key="pre-deploy/$(date -u +%Y%m%dT%H%M%SZ)-${IMAGE_TAG}.dump"
-              aws s3 cp /dump/db.dump "s3://${BACKUP_BUCKET}/${key}" \
-                --endpoint-url "${S3_ENDPOINT}" ${S3_SSE:+--sse "$S3_SSE"}
-              echo "Копия: s3://${BACKUP_BUCKET}/${key}"
-          env:
-            - { name: IMAGE_TAG, value: IMAGE_TAG_VALUE }
+            - name: BACKUP_AGE_RECIPIENTS
+              valueFrom: { configMapKeyRef: { name: vacation-config, key: BACKUP_AGE_RECIPIENTS } }
           envFrom:
-            # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION,
-            # S3_ENDPOINT, BACKUP_BUCKET, S3_SSE (необязательно: aws:kms)
             - secretRef: { name: vacation-backup }
+          securityContext:
+            readOnlyRootFilesystem: true
           volumeMounts:
-            - { name: dump, mountPath: /dump, readOnly: true }
+            - { name: work, mountPath: /work }
+            - { name: db-ca, mountPath: /app/certs, readOnly: true }

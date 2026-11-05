@@ -16,10 +16,11 @@
 | Площадка | Как | Расписание и хранение |
 |---|---|---|
 | Docker Compose | Сервис `backup`, скрипт `deploy/backup/pg-backup.sh` | Раз в сутки, 14 дней; настраивается |
-| Kubernetes | Тот же скрипт в CronJob (раздел 3) | По расписанию CronJob |
+| Kubernetes | CronJob `backup` (`deploy/k8s/cronjobs.yaml`) + копия перед каждой выкаткой; шифрование age, выгрузка в S3-совместимое хранилище (раздел 3) | Ежедневно в 02:15; срок — правило жизненного цикла бакета |
 | Railway | Встроенные снимки тома Postgres + выгрузка вне Railway (раздел 4) | Ежедневно 6 дней, еженедельно 27 дней, ежемесячно 89 дней |
 
-Копия — `pg_dump` в сжатом формате custom (`.dump`). Его можно
+Копия — `pg_dump` в сжатом формате custom (`.dump`), при заданном ключе
+age — зашифрованная (`.dump.age`). Его можно
 восстановить в базу любой версии PostgreSQL не ниже исходной, целиком
 или по отдельным таблицам.
 
@@ -50,61 +51,89 @@
 не спасёт от отказа диска. Укажите `BACKUP_HOST_DIR` на другом томе или
 сетевом хранилище либо настройте их копирование средствами хоста.
 
+**Шифрование** — открытый ключ age в `BACKUP_AGE_RECIPIENTS` (`.env`):
+копии становятся `.dump.age` (раздел 3.1 — как получить ключи).
+
 Снять копию вне расписания, например перед обновлением:
 
 ```bash
 docker compose run --rm -e BACKUP_ONCE=1 backup
 ```
 
-## 3. Kubernetes
+## 3. Kubernetes и облако
 
-Манифесты появятся в релизе 1.2 (`tasks/00-skeleton.md`, итерация 3).
-До этого — CronJob на том же скрипте. Скрипт кладётся в ConfigMap,
-каталог копий — PersistentVolumeClaim на хранилище, отличном от тома базы.
+Две копии, один образ (`deploy/backup/Dockerfile`: `pg_dump`, `age`,
+`aws-cli`) и один скрипт:
 
-```yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: vacation-backup
-spec:
-  schedule: "15 2 * * *"          # 02:15 UTC ежедневно
-  concurrencyPolicy: Forbid
-  jobTemplate:
-    spec:
-      backoffLimit: 2
-      template:
-        spec:
-          restartPolicy: OnFailure
-          containers:
-            - name: backup
-              image: postgres:16-alpine   # версия не ниже версии сервера
-              command: ["/bin/sh", "/scripts/pg-backup.sh"]
-              env:
-                - { name: BACKUP_ONCE, value: "1" }
-                - { name: BACKUP_KEEP_DAYS, value: "14" }
-                - { name: PGHOST, value: postgres }
-                - { name: PGDATABASE, value: vacation }
-                - name: PGUSER
-                  valueFrom: { secretKeyRef: { name: vacation-db, key: user } }
-                - name: PGPASSWORD
-                  valueFrom: { secretKeyRef: { name: vacation-db, key: password } }
-              volumeMounts:
-                - { name: scripts, mountPath: /scripts }
-                - { name: backups, mountPath: /backups }
-          volumes:
-            - name: scripts
-              configMap: { name: vacation-backup-script }
-            - name: backups
-              persistentVolumeClaim: { claimName: vacation-backups }
-```
+- **CronJob `backup`** — ежедневно в 02:15, каталог `daily/` бакета;
+- **копия перед выкаткой** — конвейер (`docs/20-deploy-cloud.md`,
+  раздел 4) перед миграциями, каталог `pre-deploy/`, в имени — тег версии.
+
+Цепочка: `pg_dump` → шифрование **age открытым ключом** (потоком, открытый
+дамп не касается диска) → выгрузка в **S3-совместимое хранилище** облака
+с **серверным шифрованием KMS**. Без ключа age копия не создаётся
+(`BACKUP_REQUIRE_ENCRYPTION=1`): открытая копия ПДн в бакете недопустима.
+
+Зачем два шифрования. KMS бакета защищает от утечки носителей у
+провайдера, но любой, у кого есть права на чтение бакета, получит данные
+в открытом виде. Ключ age — вне облака: даже утёкший бакет или ключ
+доступа к нему данных не раскрывают.
+
+### 3.1. Ключи age
+
+Пара ключей создаётся **один раз, вне кластера**, у ответственного за
+восстановление:
 
 ```bash
-kubectl create configmap vacation-backup-script --from-file=deploy/backup/pg-backup.sh
+age-keygen -o vacation-backup.key      # закрытый ключ — хранить офлайн
+grep 'public key' vacation-backup.key  # age1… — открытый ключ
 ```
 
-Если база — управляемый сервис облака, у него есть собственные снимки.
-Включите их, а CronJob оставьте для копии, которая не зависит от провайдера.
+- Открытый ключ — в ConfigMap: `BACKUP_AGE_RECIPIENTS` (через запятую
+  можно указать несколько — например, основной и резервный у второго
+  ответственного).
+- Закрытый ключ — **не** в кластере и не в облаке: менеджер паролей
+  компании, сейф с бумажной копией. Потерян закрытый ключ — копии
+  восстановить нельзя.
+- Смена ключа: новый открытый ключ — в `BACKUP_AGE_RECIPIENTS`; старый
+  закрытый хранится, пока в бакете остаются копии, зашифрованные им.
+
+### 3.2. Бакет и доступ
+
+| Облако | Хранилище | Адрес S3 API (`S3_ENDPOINT`) | Шифрование |
+|---|---|---|---|
+| AWS | S3 | `https://s3.<регион>.amazonaws.com` | `S3_SSE=aws:kms`, `S3_SSE_KMS_KEY_ID` — ключ KMS |
+| Huawei Cloud | OBS | `https://obs.<регион>.myhuaweicloud.com` | шифрование бакета по умолчанию ключом KMS (DEW) |
+| Yandex Cloud | Object Storage | `https://storage.yandexcloud.net` | шифрование бакета по умолчанию ключом KMS |
+
+- **Правило жизненного цикла бакета:** `daily/` — 35 дней,
+  `pre-deploy/` — 30 дней. Скрипт копий в бакете не удаляет.
+- **Блокировка версий / Object Lock**, если облако поддерживает: копию
+  нельзя удалить или перезаписать раньше срока даже с правами на запись.
+- **Ключ доступа — только на запись** в этот бакет (`PutObject`), без
+  чтения и удаления: из кластера нельзя ни прочитать, ни стереть копии.
+
+```bash
+kubectl -n vacation create secret generic vacation-backup \
+  --from-literal=AWS_ACCESS_KEY_ID=<ключ> \
+  --from-literal=AWS_SECRET_ACCESS_KEY=<секрет> \
+  --from-literal=AWS_DEFAULT_REGION=<регион> \
+  --from-literal=S3_ENDPOINT=<адрес S3 API> \
+  --from-literal=BACKUP_S3_BUCKET=<бакет> \
+  --from-literal=S3_SSE=aws:kms                 # только AWS; S3_SSE_KMS_KEY_ID — по желанию
+```
+
+### 3.3. Бэкапы управляемой базы (PITR)
+
+Управляемый PostgreSQL каждого облака делает собственные копии с
+восстановлением на момент времени (PITR) — включите их и задайте срок:
+
+- **срок хранения** — не меньше 7 дней (в кампанию планирования — 14);
+- **восстановление на момент времени** — основной способ отката после
+  ошибочной операции: точнее суточной копии (до минут);
+- копии провайдера живут в том же облаке и том же аккаунте; копии
+  CronJob `backup`, зашифрованные своим ключом, — независимый от
+  провайдера запасной путь.
 
 ## 4. Railway
 
@@ -148,7 +177,7 @@ pg_dump --format=custom --no-owner \
    вместо текущего. Старый том сохраняется отключённым.
 3. Проверьте изменение (Details на схеме проекта) и нажмите **Deploy**.
 
-## 5. Восстановление из файла `.dump`
+## 5. Восстановление из файла `.dump` или `.dump.age`
 
 Восстановление заменяет текущие данные: всё, что внесли после копии,
 пропадёт. Перед восстановлением снимите копию текущего состояния — на случай,
@@ -169,6 +198,14 @@ pg_dump --format=custom --no-owner \
    pg_restore --clean --if-exists --no-owner --single-transaction \
      -d "$DATABASE_PUBLIC_URL" vacation-20270115.dump
    ```
+   Зашифрованная копия — расшифровать потоком закрытым ключом age
+   (открытый дамп не сохраняется на диск):
+
+   ```bash
+   aws s3 cp s3://<бакет>/daily/vacation-20270115-021500.dump.age . --endpoint-url <адрес S3 API>
+   age -d -i vacation-backup.key vacation-20270115-021500.dump.age \
+     | pg_restore --clean --if-exists --no-owner --single-transaction -d "$DATABASE_URL"
+   ```
 3. **Запустить приложение.** Миграции при старте доведут схему до текущей
    версии кода, если копия была снята на более старой версии.
 4. **Проверить:** вход администратора, число сотрудников в разделе
@@ -186,6 +223,19 @@ pg_restore --no-owner -d restore_check vacation-20270115-021500.dump
 psql -d restore_check -c "select count(*) from employees_employee"
 dropdb restore_check
 ```
+
+Для облака — та же проверка на последней копии из бакета, зашифрованной:
+
+```bash
+age -d -i vacation-backup.key vacation-<дата>.dump.age | pg_restore --no-owner -d restore_check
+```
+
+Запишите дату проверки и число сотрудников — это и есть подтверждение,
+что копии и закрытый ключ рабочие. Пропущенная проверка — риск узнать о
+потерянном ключе в день аварии.
+
+CI на каждый PR снимает зашифрованную копию с настоящей базы, расшифровывает
+её и читает `pg_restore --list` — сломанная цепочка не попадёт в `main`.
 
 Так скрипт проверен при разработке: копия базы на 157 сотрудников
 восстановлена в отдельную базу, а также поверх рабочей с `--clean`;
