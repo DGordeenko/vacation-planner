@@ -1,0 +1,42 @@
+# Обновления зависимостей отдельными PR; каждый проходит CI как обычно.
+# Минорные и патч-версии группируются — меньше шума; мажорные приходят
+# по одной, их стоит читать (changelog, несовместимости).
+# Сообщения коммитов — по правилам репозитория (chore:).
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule: { interval: weekly, day: monday }
+    commit-message: { prefix: "chore" }
+    groups:
+      python-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly, day: monday }
+    commit-message: { prefix: "chore" }
+    groups:
+      npm-minor:
+        update-types: [minor, patch]
+
+  # Базовые образы закреплены по digest: Dependabot обновляет и digest,
+  # и тег в пределах того же ряда.
+  - package-ecosystem: docker
+    directories: [/backend, /frontend]
+    schedule: { interval: weekly, day: monday }
+    commit-message: { prefix: "chore" }
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    commit-message: { prefix: "chore" }
+
+  # Actions закреплены по SHA: Dependabot обновляет SHA и комментарий с версией.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    commit-message: { prefix: "chore" }
+    groups:
+      actions:
+        patterns: ["*"]
