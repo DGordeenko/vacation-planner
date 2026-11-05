@@ -12,7 +12,7 @@ Kubernetes 1.29.
 
 | Ресурс | Назначение |
 |---|---|
-| `Deployment backend` (2 реплики) + `Service backend:8000` | API, gunicorn. Пробы на `/api/health/` |
+| `Deployment backend` (2 реплики) + `Service backend:8000` | API, gunicorn. Пробы: liveness — `/api/health/live/` (без базы), readiness — `/api/health/ready/` |
 | `Deployment frontend` (2 реплики) + `Service frontend:8080` | Интерфейс, nginx; `/api/` проксирует на `backend:8000` |
 | `Ingress vacation` | Один домен, всё на frontend |
 | `Job migrate` | Миграции и первый администратор до обновления подов |
