@@ -7,7 +7,7 @@
 
 import type {
   Absence, AbsenceReason, AbsenceSummary, AnnualSummary, AuditEntityType, AuditRow, CheckResult,
-  RvdCompensation, RvdRow, RvdTrackingOverrides, VacationNormOverrides, TimeOffBalance, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
+  RvdCompensation, RvdRow, RvdTrackingOverrides, VacationNormOverrides, HrViewer, TimeOffBalance, CompanySettingsRow, ValidationRuleRow, AuthMethods, Branding, CalendarImpact, DayType, Decisions, DemoLogin,
   DemoRoleCode, EmployeeBrief, EmployeeImportReport, Invitation, Holiday, HolidayRow, TagMember, TagRow, TeamCalendar,
   TeamEntryDetail, TeamScope,
   ImportReport, Me, Notification, Paginated, ScheduleEntry,
@@ -280,6 +280,10 @@ export const settingsApi = {
   vacationNorms: () => request<VacationNormOverrides>("/settings/vacation-norms/"),
   setVacationNorm: (employeeId: string, value: number | null) =>
     request<VacationNormOverrides>("/settings/vacation-norms/",
+      { method: "POST", body: JSON.stringify({ employee_id: employeeId, value }) }),
+  hrViewers: () => request<HrViewer[]>("/settings/hr-viewers/"),
+  setHrViewer: (employeeId: string, value: boolean) =>
+    request<HrViewer[]>("/settings/hr-viewers/",
       { method: "POST", body: JSON.stringify({ employee_id: employeeId, value }) }),
   saveBranding: (patch: Partial<Branding>) =>
     request<Branding>("/settings/branding/", { method: "PATCH", body: JSON.stringify(patch) }),

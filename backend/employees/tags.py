@@ -63,7 +63,7 @@ def can_assign(actor, employee):
     """Кто может назначить или снять дополнительный тег сотруднику."""
     if actor.is_admin:
         return True
-    return actor.managed_units.exists() and employee.id in actor.visible_employee_ids()
+    return actor.managed_units.exists() and employee.id in actor.structure_employee_ids()
 
 
 class TagViewSet(viewsets.ModelViewSet):
@@ -110,7 +110,7 @@ class TagViewSet(viewsets.ModelViewSet):
         tag = self.get_object()
         rows = tag.employee_tags.select_related(
             "employee", "employee__org_unit", "assigned_by").order_by("employee__full_name")
-        if not request.user.is_admin:
+        if not (request.user.is_admin or request.user.is_hr):
             rows = rows.filter(employee_id__in=request.user.visible_employee_ids())
         return Response(TagMemberSerializer(rows, many=True).data)
 

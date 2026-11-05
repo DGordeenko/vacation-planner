@@ -24,6 +24,7 @@
 | hire_date | date | Дата приёма на работу — точка отсчёта накопления отпуска |
 | org_unit_id | FK → OrgUnit | Оргединица сотрудника (обычно нижний уровень — группа) |
 | is_admin | bool | Флаг административных прав (может быть выставлен любому сотруднику) |
+| is_hr | bool | HR-администратор: видит данные всех сотрудников, ничего не меняет. Видимость (`visible_employee_ids`) и право вносить данные за других (`structure_employee_ids` — только своя структура) разделены |
 | status | enum (`active`, `inactive`) | Статус сотрудника (уволенные не удаляются — сохраняется история и аудит) |
 | termination_date | date, nullable | Дата увольнения |
 | annual_vacation_norm_override | decimal, nullable | Индивидуальная норма отпуска (null = действует глобальная из `CompanySettings`); задаётся в настройках, ставка начисления пропорциональна |
@@ -249,6 +250,7 @@ erDiagram
     date hire_date
     uuid org_unit_id FK
     bool is_admin
+    bool is_hr
   }
   ORGUNIT {
     uuid id PK

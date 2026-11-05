@@ -215,7 +215,7 @@ def _calendar_scope(user, scope):
     """
     employees = Employee.objects.filter(status=Employee.Status.ACTIVE).select_related(
         "org_unit")
-    if user.is_admin:
+    if user.is_admin or user.is_hr:
         return employees, None
     own = set(user.visible_employee_ids())
     if scope == "all":
@@ -274,7 +274,7 @@ class TeamCalendarView(APIView):
 
     def get(self, request):
         user = request.user
-        if not (user.is_admin or user.managed_units.exists()):
+        if not (user.is_admin or user.is_hr or user.managed_units.exists()):
             return Response({"detail": "Календарь команды доступен руководителям"},
                             status=status.HTTP_403_FORBIDDEN)
 
@@ -353,7 +353,7 @@ class TeamEntryDetailView(APIView):
 
     def get(self, request, entry_id):
         user = request.user
-        if not (user.is_admin or user.managed_units.exists()):
+        if not (user.is_admin or user.is_hr or user.managed_units.exists()):
             return Response({"detail": "Календарь команды доступен руководителям"},
                             status=status.HTTP_403_FORBIDDEN)
         entry = get_object_or_404(

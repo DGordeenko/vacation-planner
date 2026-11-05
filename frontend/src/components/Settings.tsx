@@ -3,7 +3,7 @@ import { settingsApi } from "../api";
 import { errorText, fieldErrors, plural } from "../text";
 import EmployeePicker from "./EmployeePicker";
 import type {
-  Branding, CompanySettingsRow, EmployeeBrief, RvdTrackingOverrides, VacationNormOverrides,
+  Branding, CompanySettingsRow, EmployeeBrief, HrViewer, RvdTrackingOverrides, VacationNormOverrides,
   ValidationRuleRow,
 } from "../types";
 
@@ -23,6 +23,7 @@ export default function Settings({ branding, onBack, onBrandingChanged }: {
       <div className="vs-settings">
         <CompanySection />
         <VacationNormSection />
+        <HrViewersSection />
         <RvdTrackingSection />
         <RulesSection />
         <BrandingSection branding={branding} onChanged={onBrandingChanged} />
@@ -449,6 +450,55 @@ function VacationNormSection() {
           Задать норму
         </button>
       </div>
+    </section>
+  );
+}
+
+/** HR-администраторы: видят данные всех сотрудников, ничего не меняют. */
+function HrViewersSection() {
+  const [rows, setRows] = useState<HrViewer[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    settingsApi.hrViewers().then(setRows).catch((err) => setError(errorText(err)));
+  }, []);
+
+  async function set(id: string, value: boolean) {
+    setError(null);
+    try {
+      setRows(await settingsApi.setHrViewer(id, value));
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  if (!rows) return <section className="vs-card">{error ?? "Загружаем…"}</section>;
+
+  return (
+    <section className="vs-card vs-settings-section">
+      <h2 className="vs-section-title">HR-администраторы</h2>
+      <p className="vs-muted vs-small">
+        Видят графики, отгулы и отсутствия всех сотрудников, календарь команды
+        со всеми черновиками, теги и журнал изменений. Ничего не меняют
+        и не согласуют — кроме своего графика, как любой сотрудник.
+      </p>
+      {error && <div className="vs-error vs-error-inline">{error}</div>}
+      {rows.length > 0 && (
+        <ul className="vs-list">
+          {rows.map((r) => (
+            <li className="vs-item" key={r.id}>
+              <span>{r.full_name}</span>
+              <span className="vs-muted vs-small">
+                {r.org_unit ?? ""}{r.is_active ? "" : " · уволен"}
+              </span>
+              <button className="vs-x" onClick={() => void set(r.id, false)}
+                aria-label={`Снять роль HR с ${r.full_name}`}>✕</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <EmployeePicker label="Назначить сотрудника" exclude={new Set(rows.map((r) => r.id))}
+        onSelect={(e) => { if (e) void set(e.id, true); }} />
     </section>
   );
 }

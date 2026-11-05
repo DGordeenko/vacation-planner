@@ -78,6 +78,8 @@ def _fill(stdout) -> LoadReport:
         employee_number=data.ROLES_BY_CODE["admin"].employee_number)
     admin.is_admin = True
     admin.save(update_fields=["is_admin"])
+    Employee.objects.filter(
+        employee_number=data.ROLES_BY_CODE["hr"].employee_number).update(is_hr=True)
 
     _plan_team(report)
     _plan_everyone_else(report)

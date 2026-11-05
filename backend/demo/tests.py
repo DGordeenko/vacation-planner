@@ -67,6 +67,8 @@ class IsolationTests(TestCase):
                 data.ROLES_BY_CODE["employee"].employee_number, "e@test-corp.example")
             make_employee(data.ROLES_BY_CODE["manager"].employee_number,
                           "m@test-corp.example")
+            make_employee(data.ROLES_BY_CODE["hr"].employee_number,
+                          "hr@test-corp.example", is_hr=True)
 
         self.client = APIClient()
 
@@ -143,7 +145,7 @@ class IsolationTests(TestCase):
         demo = self.client.get("/api/v1/auth/methods/").json()["demo"]
         self.assertTrue(demo["enabled"])
         self.assertEqual([r["code"] for r in demo["roles"]],
-                         ["employee", "manager", "admin"])
+                         ["employee", "manager", "admin", "hr"])
         self.assertTrue(all(r["full_name"] and r["description"] for r in demo["roles"]))
 
     @override_settings(DEMO_MODE_ENABLED=False)
@@ -219,6 +221,12 @@ class LoaderTests(TestCase):
             self.assertEqual(Employee.objects.count(), 157)
             self.assertEqual(CompanySettings.get_solo().organization_name,
                              data.ORGANIZATION_NAME)
+
+    def test_hr_role_assigned(self):
+        with use_demo_database():
+            hr = Employee.objects.get(is_hr=True)
+            self.assertEqual(hr.employee_number, data.ROLES_BY_CODE["hr"].employee_number)
+            self.assertFalse(hr.is_admin)
 
     def test_team_plans_pass_validation(self):
         """Заданные вручную отпуска команды проходят проверки — иначе сценарий

@@ -92,6 +92,9 @@ class Employee(AbstractBaseUser, PermissionsMixin):
         OrgUnit, null=True, blank=True, on_delete=models.PROTECT, related_name="employees"
     )
     is_admin = models.BooleanField(default=False)
+    is_hr = models.BooleanField(
+        default=False,
+        help_text="HR-администратор: видит данные всех сотрудников, ничего не меняет.")
     is_staff = models.BooleanField(default=False)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
     termination_date = models.DateField(null=True, blank=True)
@@ -136,11 +139,20 @@ class Employee(AbstractBaseUser, PermissionsMixin):
         """Кого этот пользователь вправе видеть.
 
         Сотрудник — только себя. Руководитель — всю структуру вниз.
-        Администратор — всех.
+        Администратор и HR-администратор — всех.
+        Только для чтения: право что-то менять даёт structure_employee_ids.
         """
-        if self.is_admin:
+        if self.is_admin or self.is_hr:
             return list(Employee.objects.values_list("id", flat=True))
+        return self.structure_employee_ids()
 
+    def structure_employee_ids(self):
+        """Сам и подчинённые по оргструктуре — те, за кого можно вносить данные.
+
+        Отдельно от видимости: HR видит всех, но распоряжаться чужими
+        данными не вправе, даже если сам руководит подразделением — тогда
+        только своим.
+        """
         managed = list(self.managed_units.all())
         if not managed:
             return [self.id]

@@ -120,6 +120,7 @@ class AuthMeView(APIView):
             "hire_date": user.hire_date,
             "org_unit": user.org_unit.name if user.org_unit else None,
             "is_admin": user.is_admin,
+            "is_hr": user.is_hr,
             "is_manager": user.managed_units.exists(),
             "manager_name": manager.full_name if manager else None,
             "tags": [et.tag.name for et in user.employee_tags.select_related("tag")],
@@ -206,3 +207,31 @@ class InvitationReissueView(APIView):
         employee.invitation_token = uuid.uuid4()
         employee.save(update_fields=["invitation_token"])
         return Response(_invitation_row(employee))
+
+
+class HrViewersView(APIView):
+    """HR-администраторы: видят данные всех сотрудников, ничего не меняют.
+
+    GET — список; POST {employee_id, value: true|false} — назначить или снять.
+    Назначает администратор: роль открывает данные всей компании.
+    """
+
+    permission_classes = ADMIN_ONLY
+
+    def get(self, request):
+        rows = (Employee.objects.filter(is_hr=True).select_related("org_unit")
+                .order_by("full_name"))
+        return Response([{"id": str(e.id), "full_name": e.full_name,
+                          "org_unit": e.org_unit.name if e.org_unit else None,
+                          "is_active": e.status == Employee.Status.ACTIVE}
+                         for e in rows])
+
+    def post(self, request):
+        employee = get_object_or_404(Employee, id=request.data.get("employee_id"))
+        value = request.data.get("value")
+        if not isinstance(value, bool):
+            return Response({"detail": "Значение: true или false", "code": "bad_parameter"},
+                            status=status.HTTP_400_BAD_REQUEST)
+        employee.is_hr = value
+        employee.save(update_fields=["is_hr"])
+        return self.get(request)

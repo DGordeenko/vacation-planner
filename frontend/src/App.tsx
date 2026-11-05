@@ -305,8 +305,12 @@ export default function App() {
   const isAdminView = ADMIN_VIEWS.some((item) => item.view === view);
   // Чужой раздел из адреса (#settings у сотрудника) молча ведёт на свой график:
   // данные всё равно закрыл бы сервер, но пустой экран с ошибкой ни к чему.
-  const allowed = isAdminView ? me.is_admin
-    : ["decisions", "team", "tags"].includes(view) ? (me.is_manager || me.is_admin) : true;
+  // HR-администратор смотрит календарь, теги и журнал; решений не принимает.
+  const viewsAll = me.is_admin || me.is_hr;
+  const allowed = view === "audit" ? viewsAll
+    : isAdminView ? me.is_admin
+      : view === "decisions" ? (me.is_manager || me.is_admin)
+        : ["team", "tags"].includes(view) ? (me.is_manager || viewsAll) : true;
   if (!allowed) {
     window.setTimeout(() => setView("schedule"), 0);
     return <div className="vs-loading">Загружаем график…</div>;
@@ -348,17 +352,23 @@ export default function App() {
             <button className="vs-nav-item" aria-current={view === "timeoff"}
               onClick={() => setView("timeoff")}>Отгулы</button>
             {(me.is_manager || me.is_admin) && (
+              <button className="vs-nav-item" aria-current={view === "decisions"}
+                onClick={() => setView("decisions")}>
+                Требует решения
+                {decisionsCount > 0 && <span className="vs-badge">{decisionsCount}</span>}
+              </button>
+            )}
+            {(me.is_manager || viewsAll) && (
               <>
-                <button className="vs-nav-item" aria-current={view === "decisions"}
-                  onClick={() => setView("decisions")}>
-                  Требует решения
-                  {decisionsCount > 0 && <span className="vs-badge">{decisionsCount}</span>}
-                </button>
                 <button className="vs-nav-item" aria-current={view === "team"}
                   onClick={() => setView("team")}>Команда</button>
                 <button className="vs-nav-item" aria-current={view === "tags"}
                   onClick={() => setView("tags")}>Теги</button>
               </>
+            )}
+            {me.is_hr && !me.is_admin && (
+              <button className="vs-nav-item" aria-current={view === "audit"}
+                onClick={() => setView("audit")}>Журнал</button>
             )}
             {me.is_admin && (
               <button className="vs-nav-item" aria-current={isAdminView}
@@ -406,7 +416,7 @@ export default function App() {
       ) : view === "team" ? (
         <TeamCalendar year={YEAR} onBack={() => setView("schedule")} />
       ) : view === "tags" ? (
-        <TagsAdmin canEdit={me.is_admin}
+        <TagsAdmin canEdit={me.is_admin} canAssign={me.is_admin || me.is_manager}
           onBack={() => { setView("schedule"); void reload(); }} />
       ) : (
       <div className="vs-shell">

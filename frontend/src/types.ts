@@ -8,6 +8,8 @@ export interface Me {
   hire_date: string;
   org_unit: string | null;
   is_admin: boolean;
+  /** HR-администратор: видит всех сотрудников, ничего не меняет. */
+  is_hr: boolean;
   is_manager: boolean;
   manager_name: string | null;
   tags: string[];
@@ -237,6 +239,13 @@ export interface VacationNormOverrides {
     monthly_rate: number }[];
 }
 
+export interface HrViewer {
+  id: string;
+  full_name: string;
+  org_unit: string | null;
+  is_active: boolean;
+}
+
 export interface ValidationRuleRow {
   code: string;
   name: string;
@@ -262,7 +271,7 @@ export interface AuthProvider {
   auto?: boolean;
 }
 
-export type DemoRoleCode = "employee" | "manager" | "admin";
+export type DemoRoleCode = "employee" | "manager" | "admin" | "hr";
 
 export interface DemoRole {
   code: DemoRoleCode;

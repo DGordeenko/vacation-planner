@@ -819,7 +819,7 @@ class AbsenceViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_admin or user.id == employee.id:
             return True
-        return employee.id in user.visible_employee_ids()
+        return employee.id in user.structure_employee_ids()
 
     def _validate(self, data, exclude_entry_id=None):
         employee = data.get("employee") or self.request.user
