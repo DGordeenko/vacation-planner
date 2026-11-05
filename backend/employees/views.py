@@ -1,5 +1,6 @@
 import base64
 import binascii
+import logging
 import uuid
 
 from django.contrib.auth import authenticate
@@ -13,9 +14,12 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
+from config.logs import mask
 from config.permissions import ADMIN_ONLY
 from employees.importers import import_employees
 from employees.models import Employee
+
+security_log = logging.getLogger("security")
 
 
 class LoginThrottle(AnonRateThrottle):
@@ -26,7 +30,13 @@ class LoginThrottle(AnonRateThrottle):
     def allow_request(self, request, view):
         if (self.get_rate() or "") in ("0", "0/min", "off"):
             return True
-        return super().allow_request(request, view)
+        allowed = super().allow_request(request, view)
+        if not allowed:
+            # Адрес клиента — не ПДн сотрудника, а признак атаки: без него
+            # по журналу не понять, откуда идёт перебор.
+            security_log.warning("Превышен предел попыток входа с адреса %s",
+                                 self.get_ident(request), extra={"event": "login_throttled"})
+        return allowed
 
 
 class LoginView(APIView):
@@ -47,6 +57,11 @@ class LoginView(APIView):
             password=request.data.get("password"),
         )
         if user is None:
+            # Почта в журнал — маскированной: видно, что перебирают одну
+            # учётную запись, но не чью именно.
+            security_log.warning("Неудачный вход по паролю: %s",
+                                 mask(str(request.data.get("email") or "")),
+                                 extra={"event": "login_failed"})
             return Response(
                 {"detail": "Неверный email или пароль", "code": "invalid_credentials"},
                 status=status.HTTP_401_UNAUTHORIZED,

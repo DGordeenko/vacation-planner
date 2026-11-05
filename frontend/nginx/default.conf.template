@@ -12,12 +12,23 @@ map $http_x_forwarded_proto $forwarded_proto {
 # уже после realip). Django ограничивает попытки входа своим счётчиком,
 # но в памяти каждой реплики; nginx отсекает поток раньше, не нагружая
 # бэкенд. AUTH_RATE_LIMIT, AUTH_RATE_BURST — в Dockerfile.
+# Журнал запросов без строки запроса и без Referer:
+# в ссылке-приглашении (?invite=…) и при возврате из Keycloak (?code=…)
+# там токены, а журналы хранятся дольше и доступны шире, чем база.
+# Путь — из исходного запроса до «?»: $uri после try_files был бы /index.html.
+map $request_uri $request_path {
+    "~^(?<path>[^?]*)" $path;
+}
+log_format noquery '$remote_addr "$request_method $request_path $server_protocol" '
+                   '$status $body_bytes_sent $request_time "$http_user_agent"';
+
 limit_req_zone $binary_remote_addr zone=auth:10m rate=${AUTH_RATE_LIMIT};
 limit_req_status 429;
 
 server {
     listen       ${PORT};
-    server_tokens off;   # версия nginx в ответах — подсказка для поиска уязвимостей
+    server_tokens off;
+    access_log /dev/stdout noquery;   # версия nginx в ответах — подсказка для поиска уязвимостей
     # Самая большая загрузка — кадровая выгрузка; больше — ошибка 413.
     client_max_body_size ${CLIENT_MAX_BODY_SIZE};
     server_name  _;
