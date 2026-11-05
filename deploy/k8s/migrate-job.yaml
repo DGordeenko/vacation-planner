@@ -7,9 +7,14 @@ metadata:
   name: migrate
 spec:
   backoffLimit: 2
+  # Завершённые Job удаляются сами: конвейер создаёт свой на каждую версию.
+  ttlSecondsAfterFinished: 86400
   template:
     spec:
       restartPolicy: Never
+      volumes:
+        - name: db-ca
+          configMap: { name: vacation-db-ca, optional: true }
       containers:
         - name: migrate
           image: vacation-backend
@@ -18,3 +23,7 @@ spec:
           envFrom:
             - configMapRef: { name: vacation-config }
             - secretRef: { name: vacation-secrets }
+          # Корневой сертификат управляемой базы (DB_SSLROOTCERT=/app/certs/...).
+          # ConfigMap необязателен: без него каталог просто пуст.
+          volumeMounts:
+            - { name: db-ca, mountPath: /app/certs, readOnly: true }

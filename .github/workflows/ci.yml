@@ -134,3 +134,13 @@ jobs:
           curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
           ./kustomize build deploy/k8s > rendered.yaml
           ./kubeconform -strict -summary -kubernetes-version 1.29.0 rendered.yaml deploy/k8s/secret.example.yaml
+          sudo mv kustomize kubeconform /usr/local/bin/
+      # Манифесты конвейера развёртывания: рендер с примерными значениями
+      # площадки и логика выкатки/отката на заглушках kubectl.
+      - name: Конвейер развёртывания
+        run: |
+          IMAGE_TAG=sha-ci BACKEND_IMAGE=registry.example.com/b FRONTEND_IMAGE=registry.example.com/f \
+            APP_DOMAIN=vacation.example.com INGRESS_CLASS=nginx \
+            python3 deploy/ci/render.py /tmp/rendered
+          kubeconform -strict -summary -kubernetes-version 1.29.0 /tmp/rendered/*.yaml deploy/k8s/pipeline/deployer-rbac.yaml
+          deploy/ci/test_deploy.sh
