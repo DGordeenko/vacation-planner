@@ -81,7 +81,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"   # как в frontend/Dockerfile
+          node-version: "26"   # как в frontend/Dockerfile
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
@@ -177,6 +177,15 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/admin/login/)" = 403
           ADMIN_ALLOW_CIDRS=0.0.0.0/0 docker compose up -d --wait frontend
           curl -fsS http://localhost:8080/admin/login/ | grep -q csrfmiddlewaretoken
+      # Интерфейс в настоящем браузере: экран входа отрисован, в консоли
+      # нет ошибок (в том числе нарушений CSP).
+      - name: Браузерная проверка интерфейса
+        run: |
+          mkdir -p /tmp/ui && cd /tmp/ui && npm init -y > /dev/null
+          npm install --no-audit --no-fund playwright@1.65.0
+          npx playwright install --with-deps chromium
+          cp "$GITHUB_WORKSPACE/deploy/ci/smoke-ui.mjs" .
+          node smoke-ui.mjs http://localhost:8080
       # Резервная копия на настоящей базе: зашифрованный дамп должен
       # расшифровываться закрытым ключом и читаться pg_restore.
       - name: Резервная копия с шифрованием и восстановление
@@ -232,7 +241,7 @@ jobs:
           pip-audit -r backend/requirements.txt --ignore-vuln PYSEC-2025-183
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"
+          node-version: "26"
       # Только то, что попадает в бандл: инструменты сборки до пользователя
       # не доходят.
       - name: npm audit

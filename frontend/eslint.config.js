@@ -15,6 +15,12 @@ export default tseslint.config(
     plugins: { "react-hooks": reactHooks },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // Новое правило eslint-plugin-react-hooks 7 (React Compiler): сброс
+      // состояния в начале эффекта. В коде 22 таких места, все — осознанный
+      // сброс результатов проверки при смене дат или причины; переделка —
+      // правка поведения компонентов, отдельной задачей, не обновлением
+      // зависимостей. Остальные новые правила включены и проходят.
+      "react-hooks/set-state-in-effect": "off",
     },
   },
 );
