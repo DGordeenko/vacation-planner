@@ -51,10 +51,12 @@ COPY --chown=app:app . .
 # не импортирует представления, где такие ошибки обычно и проявляются.
 # DEMO_MODE_ENABLED=0 явно: с включённым демо проверка открыла бы файл
 # демо-базы и оставила его в образе от имени root (docs/15-demo-mode.md, разд. 7).
-RUN SECRET_KEY=build-only DEMO_MODE_ENABLED=0 python manage.py check
+# DATABASE_URL в памяти: иначе Django 6.1 при проверке подключался к базе
+# по умолчанию и оставлял в образе пустой /app/db.sqlite3.
+RUN SECRET_KEY=build-only DEMO_MODE_ENABLED=0 DATABASE_URL=sqlite:///:memory: python manage.py check
 
 # Статика собирается на этапе сборки: в рантайме том может быть только для чтения.
-RUN SECRET_KEY=build-only DEMO_MODE_ENABLED=0 python manage.py collectstatic --noinput
+RUN SECRET_KEY=build-only DEMO_MODE_ENABLED=0 DATABASE_URL=sqlite:///:memory: python manage.py collectstatic --noinput
 
 COPY --chown=app:app entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
