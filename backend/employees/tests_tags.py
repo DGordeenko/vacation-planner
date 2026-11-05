@@ -146,7 +146,8 @@ class TagApiTests(TestCase):
 
     def test_manager_tag_creation_is_audited(self):
         tag_id = self.manager_creates().json()["id"]
-        self.assertTrue(AuditLog.objects.filter(entity_id=str(tag_id), changed_by=self.manager).exists())
+        self.assertTrue(AuditLog.objects.filter(
+            entity_id=str(tag_id), changed_by=self.manager).exists())
 
     def test_manager_assigns_to_own_team_only(self):
         self.as_(self.manager)
