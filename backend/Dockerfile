@@ -41,6 +41,12 @@ RUN useradd --create-home --uid 1000 app \
       && rm -rf /var/lib/apt/lists/*; \
     fi
 COPY --from=builder /opt/venv /opt/venv
+# pip в рабочем образе не нужен: зависимости ставятся на этапе builder.
+# Внутри pip лежит своя копия setuptools, и сканер находил в ней
+# уязвимость (CVE-2025-47273). Убирается и из venv, и у системного Python.
+# Меньше пакетов — меньше того, что придётся обновлять.
+RUN /opt/venv/bin/python -m pip uninstall --yes pip \
+ && /usr/local/bin/python -m pip uninstall --yes --root-user-action=ignore pip setuptools wheel || true
 
 WORKDIR /app
 COPY --chown=app:app . .
