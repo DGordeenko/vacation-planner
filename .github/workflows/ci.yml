@@ -116,10 +116,13 @@ jobs:
       - name: Trivy — уязвимости образов
         run: |
           curl -fsSL https://github.com/aquasecurity/trivy/releases/download/v0.76.2/trivy_0.76.2_Linux-64bit.tar.gz | tar xz trivy
+          # Оба образа проверяются до конца, чтобы в журнале были все находки.
+          status=0
           for image in vacation-backend:ci vacation-frontend:ci; do
             ./trivy image --quiet --scanners vuln --ignore-unfixed \
-              --severity CRITICAL,HIGH --exit-code 1 "$image"
+              --severity CRITICAL,HIGH --exit-code 1 "$image" || status=1
           done
+          exit $status
       # Перечень всего, что входит в образы (SBOM, SPDX): при новой
       # уязвимости по нему видно, затронута ли выпущенная версия.
       - name: SBOM образов

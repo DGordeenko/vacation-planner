@@ -41,6 +41,10 @@ RUN useradd --create-home --uid 1000 app \
       && rm -rf /var/lib/apt/lists/*; \
     fi
 COPY --from=builder /opt/venv /opt/venv
+# setuptools системного Python из базового образа приложению не нужен
+# (оно работает из /opt/venv и его не видит), а сканер находит в нём
+# уязвимости. Меньше пакетов — меньше того, что придётся обновлять.
+RUN python -m pip uninstall --yes --root-user-action=ignore setuptools wheel 2>/dev/null || true
 
 WORKDIR /app
 COPY --chown=app:app . .
