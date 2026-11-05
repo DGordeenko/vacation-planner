@@ -46,7 +46,7 @@ class TagApiTests(TestCase):
         self.assertTrue(rows["Группа"]["is_org_unit_tag"])
         self.assertEqual(rows["Дежурство"]["max_simultaneous_absence"], 2)
 
-    def test_only_admin_changes_limit(self):
+    def test_manager_cannot_change_others_tag_limit(self):
         self.as_(self.manager)
         response = self.client.patch(f"/api/v1/tags/{self.tag.id}/",
                                      {"max_simultaneous_absence": 5}, format="json")
@@ -83,6 +83,71 @@ class TagApiTests(TestCase):
         response = self.client.delete(f"/api/v1/tags/{self.org_tag.id}/")
         self.assertEqual(response.status_code, 409)
         self.assertEqual(self.client.delete(f"/api/v1/tags/{self.tag.id}/").status_code, 204)
+
+    # --- Руководитель ведёт свои теги (решение от 06.11.2026) ----------------
+
+    def manager_creates(self, name="Доступ в ЦОД", limit=1):
+        self.as_(self.manager)
+        return self.client.post("/api/v1/tags/", {"name": name,
+                                 "max_simultaneous_absence": limit}, format="json")
+
+    def test_manager_creates_tag_with_limit(self):
+        response = self.manager_creates()
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual((body["created_by"], body["max_simultaneous_absence"], body["can_edit"]),
+                         ("Сотрудник 2", 1, True))
+        self.assertEqual(Tag.objects.get(name="Доступ в ЦОД").created_by, self.manager)
+
+    def test_manager_edits_and_deletes_own_tag(self):
+        tag_id = self.manager_creates().json()["id"]
+        response = self.client.patch(f"/api/v1/tags/{tag_id}/",
+                                     {"name": "ЦОД", "max_simultaneous_absence": 2}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.delete(f"/api/v1/tags/{tag_id}/").status_code, 204)
+
+    def test_manager_cannot_touch_other_managers_tag(self):
+        other_manager = self.person("5", unit=self.other_unit)
+        self.other_unit.manager = other_manager
+        self.other_unit.save()
+        tag_id = self.manager_creates().json()["id"]
+        self.as_(other_manager)
+        self.assertEqual(self.client.patch(f"/api/v1/tags/{tag_id}/",
+                         {"max_simultaneous_absence": 9}, format="json").status_code, 403)
+        self.assertEqual(self.client.delete(f"/api/v1/tags/{tag_id}/").status_code, 403)
+        row = next(r for r in self.client.get("/api/v1/tags/").json() if r["id"] == tag_id)
+        self.assertFalse(row["can_edit"])
+
+    def test_manager_cannot_delete_admin_or_org_tags(self):
+        self.as_(self.manager)
+        self.assertEqual(self.client.delete(f"/api/v1/tags/{self.tag.id}/").status_code, 403)
+        self.assertEqual(self.client.delete(f"/api/v1/tags/{self.org_tag.id}/").status_code, 403)
+
+    def test_org_tag_not_editable_even_if_created_by_manager(self):
+        """Тег, ставший тегом подразделения, — правило оргструктуры, не руководителя."""
+        self.org_tag.created_by = self.manager
+        self.org_tag.save()
+        self.as_(self.manager)
+        self.assertEqual(self.client.patch(f"/api/v1/tags/{self.org_tag.id}/",
+                         {"max_simultaneous_absence": 1}, format="json").status_code, 403)
+
+    def test_employee_cannot_create_tag(self):
+        self.as_(self.employee)
+        response = self.client.post("/api/v1/tags/", {"name": "Свой"}, format="json")
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_edits_manager_tag(self):
+        tag_id = self.manager_creates().json()["id"]
+        self.as_(self.admin)
+        self.assertEqual(self.client.patch(f"/api/v1/tags/{tag_id}/",
+                         {"max_simultaneous_absence": 4}, format="json").status_code, 200)
+        rows = {r["id"]: r for r in self.client.get("/api/v1/tags/").json()}
+        self.assertTrue(all(r["can_edit"] for r in rows.values()))
+
+    def test_manager_tag_creation_is_audited(self):
+        tag_id = self.manager_creates().json()["id"]
+        self.assertTrue(AuditLog.objects.filter(
+            entity_id=str(tag_id), changed_by=self.manager).exists())
 
     def test_manager_assigns_to_own_team_only(self):
         self.as_(self.manager)

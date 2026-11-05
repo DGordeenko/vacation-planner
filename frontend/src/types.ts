@@ -322,6 +322,10 @@ export interface TagRow {
   members_count: number;
   manual_count: number;
   is_org_unit_tag: boolean;
+  /** Кто создал тег; null — администратор или тег создан до учёта автора. */
+  created_by: string | null;
+  /** Может ли текущий пользователь менять лимит и удалять тег (решает сервер). */
+  can_edit: boolean;
 }
 
 export interface TagMember {

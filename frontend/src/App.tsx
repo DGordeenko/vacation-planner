@@ -422,7 +422,8 @@ export default function App() {
       ) : view === "team" ? (
         <TeamCalendar year={YEAR} onBack={() => setView("schedule")} />
       ) : view === "tags" ? (
-        <TagsAdmin canEdit={me.is_admin} canAssign={me.is_admin || me.is_manager}
+        <TagsAdmin canEdit={me.is_admin} canCreate={me.is_admin || me.is_manager}
+          canAssign={me.is_admin || me.is_manager}
           onBack={() => { setView("schedule"); void reload(); }} />
       ) : (
       <div className="vs-shell">

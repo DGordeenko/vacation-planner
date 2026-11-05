@@ -1,7 +1,11 @@
 """Справочник тегов, лимиты и ручное назначение (ФЗ 4.2.2, 4.7).
 
-Права:
-- справочник и лимиты меняет администратор;
+Права (решение от 06.11.2026, меняет ФЗ 4.2.2 и 4.7):
+- администратор создаёт, меняет и удаляет любые теги и лимиты;
+- руководитель создаёт теги и задаёт им лимит, меняет и удаляет только
+  созданные им теги. Лимит тега действует на всю компанию, поэтому чужие
+  теги и теги подразделений руководителю не доступны: правка одного
+  руководителя не должна менять правила для других подразделений;
 - дополнительный тег назначает руководитель любого уровня — сотрудникам
   своей структуры, и администратор — любому. Сотрудник себе теги
   не назначает (решение от 25.10.2026, меняет ФЗ 4.2.2);
@@ -19,16 +23,36 @@ from rest_framework.views import APIView
 from employees.models import Employee, EmployeeTag, Tag
 
 
+def is_manager(user):
+    return user.managed_units.exists()
+
+
+def can_manage_tag(user, tag, is_org_unit_tag):
+    """Может ли пользователь менять и удалять тег (название, лимит)."""
+    if user.is_admin:
+        return True
+    return (not is_org_unit_tag and tag.created_by_id == user.id and is_manager(user))
+
+
 class TagSerializer(serializers.ModelSerializer):
     # Счётчики приходят аннотацией запроса; у только что созданного тега их нет.
     members_count = serializers.SerializerMethodField()
     manual_count = serializers.SerializerMethodField()
     is_org_unit_tag = serializers.SerializerMethodField()
+    created_by = serializers.CharField(source="created_by.full_name", default=None,
+                                       read_only=True)
+    # Право решает сервер: интерфейс по этому признаку показывает правку.
+    can_edit = serializers.SerializerMethodField()
 
     class Meta:
         model = Tag
         fields = ["id", "name", "max_simultaneous_absence", "members_count",
-                  "manual_count", "is_org_unit_tag"]
+                  "manual_count", "is_org_unit_tag", "created_by", "can_edit"]
+
+    def get_can_edit(self, obj):
+        request = self.context.get("request")
+        return bool(request) and can_manage_tag(
+            request.user, obj, self.get_is_org_unit_tag(obj))
 
     def get_members_count(self, obj):
         return getattr(obj, "members_count", 0)
@@ -72,7 +96,7 @@ class TagViewSet(viewsets.ModelViewSet):
     pagination_class = None
 
     def get_queryset(self):
-        return Tag.objects.annotate(
+        return Tag.objects.select_related("created_by").annotate(
             members_count=Count("employee_tags", distinct=True),
             manual_count=Count("employee_tags", distinct=True,
                                filter=Q(employee_tags__source=Tag.Source.MANUAL)),
@@ -80,23 +104,33 @@ class TagViewSet(viewsets.ModelViewSet):
                              filter=Q(employee_tags__source=Tag.Source.AUTO_ORG)),
         ).order_by("name")
 
-    def _admin_only(self, request):
-        if not request.user.is_admin:
-            return Response({"detail": "Справочник тегов меняет администратор"},
+    def _forbidden(self, request, tag=None):
+        if tag is None:
+            if request.user.is_admin or is_manager(request.user):
+                return None
+            return Response({"detail": "Создавать теги может руководитель или администратор"},
                             status=status.HTTP_403_FORBIDDEN)
-        return None
+        if can_manage_tag(request.user, tag, tag.auto_count > 0):
+            return None
+        return Response({"detail": "Руководитель меняет только созданные им теги; "
+                                   "остальные — администратор"},
+                        status=status.HTTP_403_FORBIDDEN)
 
     def create(self, request, *args, **kwargs):
-        return self._admin_only(request) or super().create(request, *args, **kwargs)
+        return self._forbidden(request) or super().create(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
     def update(self, request, *args, **kwargs):
-        return self._admin_only(request) or super().update(request, *args, **kwargs)
+        return (self._forbidden(request, self.get_object())
+                or super().update(request, *args, **kwargs))
 
     def destroy(self, request, *args, **kwargs):
-        denied = self._admin_only(request)
+        tag = self.get_object()
+        denied = self._forbidden(request, tag)
         if denied:
             return denied
-        tag = self.get_object()
         if tag.auto_count:
             return Response(
                 {"detail": "Тег подразделения удалить нельзя: он восстановится "
