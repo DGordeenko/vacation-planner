@@ -66,6 +66,9 @@ Kubernetes 1.29.
 
 ## 3. Обновление версии
 
+Автоматически, после каждого зелёного CI на `main` — `.github/workflows/deploy.yml`,
+подготовка — `20-deploy-cloud.md`, раздел 4. Вручную:
+
 ```bash
 # новая версия в kustomization.yaml (images.newTag), затем:
 kubectl -n vacation delete job migrate --ignore-not-found

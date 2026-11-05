@@ -64,3 +64,190 @@ TLS завершается до приложения. nginx фронтенда �
 production сузьте список до подсетей балансировщика платформы.
 Слишком узкий список приведёт к тому, что все клиенты будут видны с
 адреса балансировщика и разделят один предел попыток входа.
+
+## 4. Автоматическая выкатка (управляемый Kubernetes)
+
+После зелёного CI на `main` workflow `.github/workflows/deploy.yml`
+собирает образы с тегом `sha-<7 знаков коммита>`, публикует их в реестр
+и выкатывает в кластер:
+
+```
+CI зелёный ─▶ образы ─▶ копия базы ─▶ миграции ─▶ бэкенд ─▶ фронтенд ─▶ smoke
+                                          │ сбой: стоп   └── сбой: возврат прежних образов
+```
+
+Схема одна для **AWS (EKS)**, **Huawei Cloud (CCE)** и **Yandex Cloud
+(Managed Service for Kubernetes)**. От облака зависят только вход в реестр
+образов и в кластер, их выбирают переменные `REGISTRY_PROVIDER` и
+`CLUSTER_AUTH`. Шаги выкатки — `deploy/ci/deploy.sh`, сборка манифестов —
+`deploy/ci/render.py`; логика проверяется в CI на заглушках.
+
+Пока в репозитории не задана переменная `DEPLOY_ENABLED=true`, workflow
+не запускается.
+
+### 4.1. Что подготовить в облаке (общее для всех)
+
+1. **Кластер Kubernetes** 1.27+ с ingress-контроллером и выпуском
+   сертификатов (cert-manager или менеджер сертификатов облака).
+   **API кластера должен быть доступен с раннеров GitHub** (публичный
+   адрес с ограничением по сетям). Если API только во внутренней сети —
+   нужен self-hosted runner внутри неё; тогда в workflow меняется только
+   `runs-on`.
+2. **Управляемый PostgreSQL** с TLS. Корневой сертификат провайдера —
+   в ConfigMap (монтируется в `/app/certs`):
+   ```bash
+   kubectl create namespace vacation
+   kubectl -n vacation create configmap vacation-db-ca --from-file=root.crt=<файл сертификата>
+   ```
+   В `CONFIG_OVERRIDES` (ниже): `DB_SSLMODE=verify-full`,
+   `DB_SSLROOTCERT=/app/certs/root.crt`.
+3. **Реестр образов** (ECR, SWR или Container Registry) с репозиториями
+   `backend` и `frontend` и **сканированием уязвимостей при загрузке**
+   (scan on push в ECR, сканер в Container Registry, сканирование образов
+   SWR).
+4. **Бакет для копий базы** (S3, OBS или Object Storage) с шифрованием
+   на стороне сервера ключом KMS и правилом жизненного цикла (например,
+   удалять `pre-deploy/` старше 30 дней). Отдельный ключ доступа только
+   на запись в этот бакет — в Secret кластера:
+   ```bash
+   kubectl -n vacation create secret generic vacation-backup \
+     --from-literal=AWS_ACCESS_KEY_ID=<ключ> \
+     --from-literal=AWS_SECRET_ACCESS_KEY=<секрет> \
+     --from-literal=AWS_DEFAULT_REGION=<регион> \
+     --from-literal=S3_ENDPOINT=<адрес S3 API> \
+     --from-literal=BACKUP_BUCKET=<бакет> \
+     --from-literal=S3_SSE=aws:kms        # только для AWS; в OBS и Object Storage — шифрование бакета по умолчанию
+   ```
+   Адрес S3 API: AWS — `https://s3.<регион>.amazonaws.com`, Huawei —
+   `https://obs.<регион>.myhuaweicloud.com`, Yandex —
+   `https://storage.yandexcloud.net`. Без копии (`BACKUP_ENABLED=0`)
+   конвейер работает, но тогда восстановление — только из бэкапов
+   управляемой базы (PITR, раздел 5).
+5. **Секрет приложения** `vacation-secrets` — по
+   `deploy/k8s/secret.example.yaml` (`docs/18-deploy-kubernetes.md`).
+6. **Учётная запись конвейера в кластере** — права только в пространстве
+   имён `vacation`, секреты читать не может:
+   ```bash
+   kubectl apply -f deploy/k8s/pipeline/deployer-rbac.yaml
+   ```
+
+### 4.2. Вход в облако: по провайдерам
+
+Принцип — **без долгоживущих ключей**, где облако это позволяет:
+GitHub выдаёт задаче OIDC-токен, облако меняет его на временные права
+сервисной роли. Доверие ограничивается репозиторием **и** Environment:
+`sub = repo:<владелец>/<репозиторий>:environment:production`, — запуск
+из другой ветки или форка права не получит.
+
+**AWS.** И реестр, и кластер — по OIDC.
+1. IAM → Identity providers: OIDC-провайдер
+   `https://token.actions.githubusercontent.com`, audience `sts.amazonaws.com`.
+2. Роль с доверием этому провайдеру и условием на `sub` (выше).
+   Права: push в два репозитория ECR, `eks:DescribeCluster` для кластера.
+3. EKS → Access entries: запись для роли с группой Kubernetes
+   `vacation-deployers` и привязка роли `deployer` к группе:
+   ```bash
+   kubectl -n vacation create rolebinding deployer-group --role=deployer --group=vacation-deployers
+   ```
+4. Переменные: `REGISTRY_PROVIDER=aws`, `CLUSTER_AUTH=aws-eks`,
+   `AWS_ROLE_ARN`, `AWS_REGION`, `EKS_CLUSTER`,
+   `REGISTRY=<аккаунт>.dkr.ecr.<регион>.amazonaws.com/vacation`.
+
+**Yandex Cloud.** Реестр — по OIDC (Workload Identity Federation),
+кластер — kubeconfig учётной записи `deployer`.
+1. IAM → Workload identity federations: issuer
+   `https://token.actions.githubusercontent.com`, JWKS
+   `https://token.actions.githubusercontent.com/.well-known/jwks`,
+   audience — например `https://github.com/<владелец>`.
+2. Сервисный аккаунт с ролью `container-registry.images.pusher` на реестр;
+   привязка к федерации с `sub` (выше).
+3. Переменные: `REGISTRY_PROVIDER=yandex`, `CLUSTER_AUTH=kubeconfig`,
+   `YC_SERVICE_ACCOUNT_ID`, `YC_OIDC_AUDIENCE` (тот же, что в федерации),
+   `REGISTRY=cr.yandex/<id реестра>`; секрет `KUBECONFIG` (4.3).
+
+**Huawei Cloud.** Реестр — по логину, кластер — kubeconfig `deployer`.
+У Huawei есть обмен OIDC-токена на временные права
+(`AssumeAgencyWithOIDC`), но вход в SWR по ним требует подписанных
+вызовов API и отдельной утилиты — для первой версии выбран вход по
+логину. Чтобы ключ не давал лишнего:
+1. Отдельный IAM-пользователь **только** с правом загрузки в
+   организацию SWR, без доступа к консоли.
+2. SWR → «Долговременная команда входа» для него: из неё логин
+   (`<регион>@<AK>`) и пароль — в секреты `REGISTRY_USERNAME`,
+   `REGISTRY_PASSWORD`. Ротация — раз в 90 дней (новый AK, старый удалить).
+3. Переменные: `REGISTRY_PROVIDER=password`, `CLUSTER_AUTH=kubeconfig`,
+   `REGISTRY_HOST=swr.<регион>.myhuaweicloud.com`,
+   `REGISTRY=swr.<регион>.myhuaweicloud.com/<организация>`; секрет
+   `KUBECONFIG` (4.3).
+
+Тот же вариант `password` подходит для любого другого реестра (Harbor,
+Nexus).
+
+### 4.3. kubeconfig для конвейера
+
+Для `CLUSTER_AUTH=kubeconfig` — файл с токеном учётной записи `deployer`.
+Почему не облачный вход в кластер: у каждого облака он свой и требует его
+утилиты на раннере, а токен Kubernetes одинаков везде и даёт права только
+в `vacation`. Отзыв — удалить Secret `deployer-token` (раз в полгода или
+при подозрении на утечку — пересоздать и обновить секрет в GitHub).
+
+```bash
+NS=vacation
+SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+CA=$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
+TOKEN=$(kubectl -n $NS get secret deployer-token -o jsonpath='{.data.token}' | base64 -d)
+cat > deployer.kubeconfig <<KCFG
+apiVersion: v1
+kind: Config
+clusters: [{name: vacation, cluster: {server: $SERVER, certificate-authority-data: $CA}}]
+users: [{name: deployer, user: {token: $TOKEN}}]
+contexts: [{name: deployer, context: {cluster: vacation, user: deployer, namespace: $NS}}]
+current-context: deployer
+KCFG
+kubectl --kubeconfig deployer.kubeconfig -n $NS auth can-i patch deployments   # yes
+kubectl --kubeconfig deployer.kubeconfig -n $NS auth can-i get secrets         # no
+```
+
+Содержимое файла — в секрет `KUBECONFIG` Environment, сам файл удалить.
+
+### 4.4. Настройки GitHub
+
+1. Settings → Environments → **production**: Deployment branches —
+   только `main`; Required reviewers — по желанию (тогда каждая выкатка
+   ждёт подтверждения).
+2. Переменные **Environment** (Variables):
+
+   | Переменная | Пример / значение |
+   |---|---|
+   | `REGISTRY_PROVIDER` | `aws`, `yandex` или `password` |
+   | `CLUSTER_AUTH` | `kubeconfig` или `aws-eks` |
+   | `REGISTRY` | адрес без имени образа, см. 4.2 |
+   | `APP_DOMAIN` | `vacation.example.com` |
+   | `APP_URL` | `https://vacation.example.com` |
+   | `INGRESS_CLASS` | класс ingress-контроллера; пусто — по умолчанию |
+   | `INGRESS_ANNOTATIONS` | по строке `ключ=значение`: выпуск сертификата, тип балансировщика |
+   | `CONFIG_OVERRIDES` | по строке `КЛЮЧ=значение` в ConfigMap: `DB_SSLMODE`, `DB_SSLROOTCERT`, `TRUSTED_PROXY_CIDRS`, `ADMIN_ALLOW_CIDRS`, `SECURE_HSTS_SECONDS`… |
+   | `PG_CLIENT_IMAGE` | образ с `pg_dump` не старше версии сервера, по умолчанию `postgres:16-alpine` |
+   | `BACKUP_ENABLED` | `1` (по умолчанию) или `0` |
+   | `SMOKE_ADMIN_CODE` | ожидаемый код `/admin/login/` с раннера, по умолчанию `403` |
+   | `ADMIN_PATH` | если менялся `DJANGO_ADMIN_PATH` |
+   | провайдерные | `AWS_ROLE_ARN`, `AWS_REGION`, `EKS_CLUSTER`, `YC_SERVICE_ACCOUNT_ID`, `YC_OIDC_AUDIENCE`, `REGISTRY_HOST` |
+
+3. Секреты **Environment**: `KUBECONFIG`; для `password` —
+   `REGISTRY_USERNAME`, `REGISTRY_PASSWORD`.
+4. Переменная **репозитория** (не Environment) `DEPLOY_ENABLED=true` —
+   включает выкатку.
+
+### 4.5. Первый запуск, повтор и откат
+
+- Первый запуск: Actions → **Deploy** → Run workflow, тег пустой.
+  Job миграций создаст первого администратора (`ADMIN_EMAIL` и
+  `ADMIN_PASSWORD` в `vacation-secrets`); после первого входа удалите их
+  из секрета.
+- Дальше — автоматически после каждого зелёного CI на `main`.
+- **Откат на прежнюю версию**: Run workflow с тегом этой версии
+  (`sha-…`, теги видны в итогах прошлых запусков и в реестре). Образы
+  не пересобираются; миграции этой версии уже применены — Job пройдёт
+  без изменений.
+- Миграции **назад не откатываются**. Если новая схема несовместима со
+  старым кодом — восстановление из копии `pre-deploy/` (`16-backups.md`).
