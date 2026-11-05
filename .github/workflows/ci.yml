@@ -164,6 +164,21 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/admin/login/)" = 403
           ADMIN_ALLOW_CIDRS=0.0.0.0/0 docker compose up -d --wait frontend
           curl -fsS http://localhost:8080/admin/login/ | grep -q csrfmiddlewaretoken
+      # Корневая ФС только для чтения, как в deploy/k8s: если приложению
+      # понадобится писать куда-то ещё, это всплывёт здесь, а не в кластере.
+      - name: Запуск с файловой системой только для чтения
+        run: |
+          SECRET_KEY=ci-compose-$(date +%s)-not-secret
+          export SECRET_KEY
+          docker compose -f docker-compose.yml -f deploy/ci/compose.readonly.yml up -d --wait --force-recreate backend frontend
+          curl -fsS http://localhost:8080/api/health/ready/
+          curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
+          # Демо-режим включён: его база SQLite тоже должна жить во временном каталоге.
+          curl -fsS -X POST -H 'Content-Type: application/json' -d '{"role":"employee"}' \
+            http://localhost:8080/api/v1/auth/demo-login/ | grep -q token
+          if docker compose exec -T backend touch /app/x 2>/dev/null; then
+            echo "Корневая ФС бэкенда доступна на запись"; exit 1
+          fi
       - name: Журналы при сбое
         if: failure()
         run: docker compose logs --no-color

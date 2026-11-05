@@ -1,0 +1,15 @@
+# Проверка в CI: приложение работает с корневой ФС только для чтения,
+# как в Kubernetes (readOnlyRootFilesystem). Записать можно лишь в те же
+# каталоги, что смонтированы в манифестах deploy/k8s.
+#   docker compose -f docker-compose.yml -f deploy/ci/compose.readonly.yml up -d --wait
+services:
+  backend:
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      DEMO_MODE_ENABLED: "True"   # демо-база SQLite — тоже во временном каталоге
+  frontend:
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /etc/nginx/conf.d:uid=101,gid=101
