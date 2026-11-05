@@ -141,3 +141,62 @@ class SecuritySettingsTests(SimpleTestCase):
                 self.assertEqual((s.SESSION_COOKIE_SECURE, s.CSRF_COOKIE_SECURE),
                                  (expected, expected), env)
         importlib.reload(s)
+
+
+class SecretFileTests(SimpleTestCase):
+    """Секреты из файлов: так их монтируют k8s Secret-тома и CSI-драйверы."""
+
+    def reload(self, env):
+        """Перечитать settings с окружением env; вернуть копию значений."""
+        import importlib
+        from types import SimpleNamespace
+
+        import config.settings as s
+        try:
+            with mock.patch.dict("os.environ", env):
+                importlib.reload(s)
+                return SimpleNamespace(**{k: getattr(s, k) for k in dir(s) if k.isupper()})
+        finally:
+            importlib.reload(s)
+
+    def test_file_wins_over_variable(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".key", delete=False) as f:
+            f.write("k" * 60 + "\n")
+        s = self.reload({"SECRET_KEY": "from-env", "SECRET_KEY_FILE": f.name})
+        self.assertEqual(s.SECRET_KEY, "k" * 60)
+        os.unlink(f.name)
+
+    def test_database_url_from_file(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write("postgres://u:p@db.internal/vac\n")
+        s = self.reload({"DATABASE_URL_FILE": f.name})
+        self.assertEqual(s.DATABASES["default"]["HOST"], "db.internal")
+        os.unlink(f.name)
+
+    def test_missing_file_fails_loudly(self):
+        """Файл указан, но его нет — ошибка, а не тихий ключ по умолчанию."""
+        with self.assertRaises(FileNotFoundError):
+            self.reload({"SECRET_KEY_FILE": "/nonexistent/secret"})
+
+    def test_fallbacks_from_variable_and_file(self):
+        import tempfile
+        s = self.reload({"SECRET_KEY_FALLBACKS": "old1, old2"})
+        self.assertEqual(s.SECRET_KEY_FALLBACKS, ["old1", "old2"])
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write("old1\nold2\n")
+        s = self.reload({"SECRET_KEY_FALLBACKS_FILE": f.name})
+        self.assertEqual(s.SECRET_KEY_FALLBACKS, ["old1", "old2"])
+        os.unlink(f.name)
+
+    def test_session_signed_with_old_key_survives_rotation(self):
+        """Ради этого и нужны FALLBACKS: смена ключа не выкидывает из админки."""
+        from django.core import signing
+        with override_settings(SECRET_KEY="old" * 20):
+            value = signing.dumps("session")
+        with override_settings(SECRET_KEY="new" * 20, SECRET_KEY_FALLBACKS=["old" * 20]):
+            self.assertEqual(signing.loads(value), "session")
+        with override_settings(SECRET_KEY="new" * 20, SECRET_KEY_FALLBACKS=[]):
+            with self.assertRaises(signing.BadSignature):
+                signing.loads(value)

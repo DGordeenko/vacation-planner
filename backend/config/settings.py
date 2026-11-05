@@ -26,9 +26,35 @@ def _env_list(name, default=""):
     return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
 
 
+def _secret(name, default=""):
+    """Значение секрета: из файла NAME_FILE, если он задан, иначе из NAME.
+
+    Файл удобнее переменной: так секреты монтируют k8s Secret-тома и
+    CSI-драйверы облаков (Huawei CCE Secrets Manager for DEW отдаёт секреты
+    только файлами). Переменные окружения видны в дампах процессов,
+    `docker inspect`, журналах падений — файл с правами 0400 не виден.
+    Файл задан, но не читается — ошибка сразу при старте, а не тихий
+    откат на значение по умолчанию.
+    """
+    path = os.environ.get(f"{name}_FILE", "").strip()
+    if path:
+        return Path(path).read_text(encoding="utf-8").strip()
+    return os.environ.get(name, default)
+
+
 # Значение по умолчанию годится только для локального запуска и тестов.
-# На сервере SECRET_KEY задаётся переменной окружения.
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key-replace-in-production")
+# На сервере SECRET_KEY задаётся переменной окружения или файлом.
+SECRET_KEY = _secret("SECRET_KEY", "dev-only-insecure-key-replace-in-production")
+
+# Прежние ключи на время смены SECRET_KEY: подписанные ими сессии (вход
+# в админку, незавершённый вход через Keycloak) остаются действительными.
+# Через срок жизни сессии (SESSION_COOKIE_AGE) старый ключ убирают.
+# Токены входа в приложение от SECRET_KEY не зависят — это случайные
+# ключи в базе. Через запятую; из файла — по одному на строку.
+SECRET_KEY_FALLBACKS = [
+    key.strip() for key in _secret("SECRET_KEY_FALLBACKS").replace("\n", ",").split(",")
+    if key.strip()
+]
 
 DEBUG = os.environ.get("DEBUG", "False").lower() in ("1", "true", "yes")
 
@@ -131,7 +157,7 @@ SSO_OIDC = {
     "server_url": os.environ.get("OIDC_SERVER_URL", ""),
     "realm": os.environ.get("OIDC_REALM", ""),
     "client_id": os.environ.get("OIDC_CLIENT_ID", ""),
-    "client_secret": os.environ.get("OIDC_CLIENT_SECRET", ""),
+    "client_secret": _secret("OIDC_CLIENT_SECRET"),
     "redirect_uri": os.environ.get("OIDC_REDIRECT_URI", ""),
     "scope": os.environ.get("OIDC_SCOPE") or "openid email profile",
     "button_title": os.environ.get("OIDC_BUTTON_TITLE") or "Войти через Keycloak",
@@ -258,7 +284,7 @@ def _libpq_options(query):
 
 # Без DATABASE_URL работает локально на SQLite: так прогоняются тесты
 # и запускается проект без поднятой базы.
-_database_url = os.environ.get("DATABASE_URL", "")
+_database_url = _secret("DATABASE_URL")
 DATABASES = {
     "default": _database_from_url(_database_url) if _database_url else {
         "ENGINE": "django.db.backends.sqlite3",
@@ -295,7 +321,7 @@ def _demo_database(enabled, url):
     return {"ENGINE": "django.db.backends.sqlite3", "NAME": DEMO_SQLITE_PATH}
 
 
-DATABASES["demo"] = _demo_database(DEMO_MODE_ENABLED, os.environ.get("DEMO_DATABASE_URL", ""))
+DATABASES["demo"] = _demo_database(DEMO_MODE_ENABLED, _secret("DEMO_DATABASE_URL"))
 
 
 # Password validation
@@ -400,7 +426,7 @@ if os.environ.get("EMAIL_HOST"):
                 'host': os.environ["EMAIL_HOST"],
                 'port': int(os.environ.get("EMAIL_PORT") or "587"),
                 'username': os.environ.get("EMAIL_HOST_USER", ""),
-                'password': os.environ.get("EMAIL_HOST_PASSWORD", ""),
+                'password': _secret("EMAIL_HOST_PASSWORD"),
                 'use_tls': os.environ.get("EMAIL_USE_TLS", "True").lower() in ("1", "true", "yes"),
                 'timeout': 30,
             },

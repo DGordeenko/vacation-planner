@@ -25,6 +25,9 @@ spec:
           envFrom:
             - configMapRef: { name: vacation-config }
             - secretRef: { name: vacation-secrets }
+            # Первый администратор — только здесь: веб-подам пароль не нужен.
+            # Удалить после первого входа (docs/14-initial-admin.md).
+            - secretRef: { name: vacation-admin, optional: true }
           # Корневой сертификат управляемой базы (DB_SSLROOTCERT=/app/certs/...).
           # ConfigMap необязателен: без него каталог просто пуст.
           securityContext:

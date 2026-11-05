@@ -41,6 +41,10 @@ class Command(WorkingDatabaseChecks, BaseCommand):
         email = _env("ADMIN_EMAIL")
         # Пароль не обрезается: пробелы по краям могут быть его частью.
         password = os.environ.get("ADMIN_PASSWORD") or ""
+        if os.environ.get("ADMIN_PASSWORD_FILE"):
+            # Из файла (смонтированный секрет) — снимается только перевод строки.
+            with open(os.environ["ADMIN_PASSWORD_FILE"], encoding="utf-8") as file:
+                password = file.read().rstrip("\n")
 
         if not email and not password:
             self.stdout.write("ensure_admin: ADMIN_EMAIL и ADMIN_PASSWORD не заданы — пропускаем")

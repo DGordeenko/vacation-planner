@@ -15,7 +15,7 @@ from django.test import TestCase
 from employees.models import Employee
 
 STRONG_PASSWORD = "Vacation-Planner-2027!"
-ENV_KEYS = ("ADMIN_EMAIL", "ADMIN_PASSWORD", "ADMIN_FULL_NAME",
+ENV_KEYS = ("ADMIN_EMAIL", "ADMIN_PASSWORD", "ADMIN_PASSWORD_FILE", "ADMIN_FULL_NAME",
             "ADMIN_EMPLOYEE_NUMBER", "ADMIN_HIRE_DATE")
 
 
@@ -69,6 +69,19 @@ class EnsureAdminTests(TestCase):
         password = "  " + STRONG_PASSWORD + "  "
         self.run_command(ADMIN_EMAIL="admin@corp.ru", ADMIN_PASSWORD=password)
         self.assertIsNotNone(authenticate(username="admin@corp.ru", password=password))
+
+    def test_password_from_file(self):
+        """Смонтированный секрет: снимается только завершающий перевод строки."""
+        import tempfile
+        password = " " + STRONG_PASSWORD
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write(password + "\n")
+        try:
+            output = self.run_command(ADMIN_EMAIL="admin@corp.ru", ADMIN_PASSWORD_FILE=f.name)
+        finally:
+            os.unlink(f.name)
+        self.assertIsNotNone(authenticate(username="admin@corp.ru", password=password))
+        self.assert_password_not_leaked(output, password)
 
     # --- Пропуск --------------------------------------------------------
 
