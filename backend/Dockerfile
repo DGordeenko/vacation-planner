@@ -3,7 +3,7 @@
 # Обновления digest предлагает Dependabot (.github/dependabot.yml).
 
 # --- Сборка зависимостей -------------------------------------------------
-FROM python:3.12-slim@sha256:e695ab189fa2d082b1c61c69a6b888a5adeca61ceeccad107b1ed2a125721a9e AS builder
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS builder
 
 # Вход по Kerberos нужен не везде, а тянет системные библиотеки MIT Kerberos —
 # включается при сборке: docker build --build-arg WITH_KERBEROS=1 (docs/11-sso-setup.md).
@@ -24,7 +24,7 @@ RUN python -m venv /opt/venv \
     fi
 
 # --- Образ приложения ----------------------------------------------------
-FROM python:3.12-slim@sha256:e695ab189fa2d082b1c61c69a6b888a5adeca61ceeccad107b1ed2a125721a9e AS runtime
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS runtime
 
 ARG WITH_KERBEROS=0
 
